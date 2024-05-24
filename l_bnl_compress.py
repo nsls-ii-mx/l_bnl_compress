@@ -1,7 +1,7 @@
 '''l_bnl_compress.py, lossy, but not lossy, compresss,
        a script to apply lossy compression to HDF5 MX image files.
  
-usage: l_bnl_compress.py [-h] [-b BIN_RANGE] [-s SUM_RANGE] [-1 FIRST_IMAGE] [-N LAST_IMAGE] [-d DATA_BLOCK_SIZE] [-i INFILE]
+~usage: l_bnl_compress.py [-h] [-b BIN_RANGE] [-s SUM_RANGE] [-1 FIRST_IMAGE] [-N LAST_IMAGE] [-d DATA_BLOCK_SIZE] [-i INFILE]
                          [-m OUT_MASTER] [-o OUT_FILE] [-v]
 
 Bin and sum images from a range
@@ -101,6 +101,7 @@ def bin(old_image,bin_range,satval):
     new_image=np.asarray(np.clip(new_image,0,satval),dtype='i2')
     return new_image
 
+
 parser = argparse.ArgumentParser(description='Bin and sum images from a range')
 parser.add_argument('-1','--first_image', dest='first_image', type=int,
    help= 'first selected image counting from 1')
@@ -112,7 +113,7 @@ parser.add_argument('-d','--data_block_size', dest='data_block_size', type=int,
    help= 'data block size in images for out_file')
 parser.add_argument('-i','--infile',dest='infile',
    help= 'the input hdf5 file to read images from')
-parser.add_argument('-l','--compression_level',dest='compression_level',type=int,
+parser.add_argument('-l','--compression_level',dest='compression_level',
    help= 'target level for the compression filter used')
 parser.add_argument('-m','--out_master',dest='out_master',default='out_master',
    help= 'the output hdf5 master to which to write metadata')
@@ -125,11 +126,27 @@ parser.add_argument('-s','--sum', dest='sum_range', type=int,
 parser.add_argument('-v','--verbose',dest='verbose',action='store_true', 
    help= 'provide addtional information')
 args = vars(parser.parse_args())
+
+h5py._hl.filters._COMP_FILTERS['blosc']    =32001
+h5py._hl.filters._COMP_FILTERS['lz4']      =32004
+h5py._hl.filters._COMP_FILTERS['bshuf']    =32008
+h5py._hl.filters._COMP_FILTERS['zfp']      =32013
+h5py._hl.filters._COMP_FILTERS['zstd']     =32015
+h5py._hl.filters._COMP_FILTERS['sz']       =32017
+h5py._hl.filters._COMP_FILTERS['fcidecomp']=32018
+h5py._hl.filters._COMP_FILTERS['jpeg']     =32019
+h5py._hl.filters._COMP_FILTERS['sz3']      =32024
+h5py._hl.filters._COMP_FILTERS['blosc2']   =32026
+h5py._hl.filters._COMP_FILTERS['j2k']      =32029
+h5py._hl.filters._COMP_FILTERS['hcomp']    =32030
+
+
 if args['verbose'] == True:
-   print(args)
+     print(args)
+     print(h5py._hl.filters._COMP_FILTERS)
 
 try:
-     fin = h5py.File(args['infile'], 'r')
+    fin = h5py.File(args['infile'], 'r')
 except:
     print('l_bnl_compress.py: infile not specified')
     sys.exit(-1)
@@ -434,7 +451,7 @@ except:
         fin.close()
         sys.exit(-1)
 
-block_shape=data_start[()].shape
+block_shape=data_start.shape
 if  len(block_shape) != 3:
     print('l_bnl_compress.py: dimension of /entry/data data block is not 3')
     fin.close()
@@ -443,7 +460,7 @@ if  len(block_shape) != 3:
 number_per_block=int(block_shape[0])
 if args['verbose']==True:
     print('l_bnl_compress.py: first data block: ', data_start)
-    print('                 first data block[()]: ', data_start[()])
+    print('                 dir(first data block): ', dir(data_start))
     print('                 number_per_block: ',number_per_block)
 
 print (args['first_image'],args['last_image']+1,args['sum_range'])
@@ -578,11 +595,26 @@ for nout_block in range(1,out_number_of_blocks+1):
             maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
             dtype='i2',chunks=(1,nout_data_shape[0],nout_data_shape[1]))
     else:
-        fout[nout_block]['entry']['data'].create_dataset('data',
-            shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
-            maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
-            dtype='i2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
-            compression=args['compression'],compression_opts=args['compression_level'])
+        try:
+            xcl=int(args['compression_level'])
+            xcl = (xcl,)
+        except:
+            xclsplit=args['compression_level'].split(',')
+            print("xclsplit: ",xclsplit)
+            xcl=tuple(map(int,xclsplit))
+        try:
+            fout[nout_block]['entry']['data'].create_dataset('data',
+                shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
+                maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
+                dtype='i2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
+                compression=args['compression'],compression_opts=xcl)
+        except:
+            fout[nout_block]['entry']['data'].create_dataset('data',
+                shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
+                maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
+                dtype='i2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
+                compression=int(args['compression']),compression_opts=xcl)
+
     print("fout[nout_block]['entry']['data']['data']: ",fout[nout_block]['entry']['data']['data'])
     for out_image in range(nout_image,lim_nout_image):
         fout[nout_block]['entry']['data']['data'][out_image-nout_image,0:nout_data_shape[0],0:nout_data_shape[1]] \
