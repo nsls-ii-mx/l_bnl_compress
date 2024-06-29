@@ -1,8 +1,10 @@
 '''l_bnl_compress.py, lossy, but not lossy, compresss,
        a script to apply lossy compression to HDF5 MX image files.
  
-~usage: l_bnl_compress.py [-h] [-b BIN_RANGE] [-s SUM_RANGE] [-1 FIRST_IMAGE] [-N LAST_IMAGE] [-d DATA_BLOCK_SIZE] [-i INFILE]
-                         [-m OUT_MASTER] [-o OUT_FILE] [-v]
+usage: l_bnl_compress.py [-h] [-1 FIRST_IMAGE] [-b BIN_RANGE] [-d DATA_BLOCK_SIZE] \
+                         [-H HCOMP_SCALE] [-i INFILE] [-J J2K_TARGET_COMPRESSION_RATIO] \
+                         [-m OUT_MASTER] [-N LAST_IMAGE] [-o OUT_FILE] \
+                         [-s SUM_RANGE] [-v]
 
 Bin and sum images from a range
 
@@ -12,14 +14,14 @@ options:
                         first selected image counting from 1
   -b BIN_RANGE, --bin BIN_RANGE
                         an integer image binning range (1 ...) to apply to each selected image
-  -c COMPRESSION, --compression COMPRESSION
-                        compression filter name or id number
   -d DATA_BLOCK_SIZE, --data_block_size DATA_BLOCK_SIZE
                         data block size in images for out_file
+  -H HCOMP_SCALE, --Hcompress HCOMP_SCALE
+                        Hcompress scale compression, immediately followed by decompression
   -i INFILE, --infile INFILE
                         the input hdf5 file to read images from
-  -l COMPRESSION_LEVEL, --compression_level COMPRESSION_LEVEL
-                        target level for the compression filter used
+  -J J2K_TARGET_COMPRESSION_RATIO, -J2K J2K_TARGET_COMPRESSION_RATIO
+                        JPEG-2000 target compression ratio, immediately followed by decompression
   -m OUT_MASTER, --out_master OUT_MASTER
                         the output hdf5 master to which to write metadata
   -N LAST_IMAGE, --last_image LAST_IMAGE
@@ -29,14 +31,22 @@ options:
   -s SUM_RANGE, --sum SUM_RANGE
                         an integer image summing range (1 ...) to apply to the selected images
   -v, --verbose         provide addtional information
+
 '''
 
 import sys
+import os
 import argparse
 import numpy as np
 import skimage as ski
 import h5py
 import tifffile
+from astropy.io import fits
+from io import BytesIO
+import glymur
+import hdf5plugin
+import tempfile
+from astropy.io.fits.hdu.compressed._codecs import HCompress1
 
 def conv_image_to_block_offset(img,npb):
     ''' conv_image_to_block_offset(img,npb)
@@ -53,7 +63,7 @@ def conv_image_to_block_offset(img,npb):
 
 def conv_image_shqpe(old_shape,bin_range):
     if len(old_shape) != 2:
-        print('l_bnl_compress: invalid image shape for 2D binning')
+        print('l_bnl_compress.py: invalid image shape for 2D binning')
         return None
     sy=old_shape[0]
     nsy=int(sy+bin_range-1)//bin_range
@@ -80,7 +90,7 @@ def bin(old_image,bin_range,satval):
         return old_image
     s=old_image.shape
     if len(s) != 2:
-        print('l_bnl_compress: invalid image shape for 2D binning')
+        print('l_bnl_compress.py: invalid image shape for 2D binning')
         return None
     sy=s[0]
     nsy=int(sy+bin_range-1)//bin_range
@@ -107,14 +117,14 @@ parser.add_argument('-1','--first_image', dest='first_image', type=int,
    help= 'first selected image counting from 1')
 parser.add_argument('-b','--bin', dest='bin_range', type=int,
    help= 'an integer image binning range (1 ...) to apply to each selected image') 
-parser.add_argument('-c','--compression', dest='compression', 
-   help= 'compression filter name or id number')
 parser.add_argument('-d','--data_block_size', dest='data_block_size', type=int,
    help= 'data block size in images for out_file')
+parser.add_argument('-H','--Hcompress', dest='hcomp_scale', type=int,
+   help= 'Hcompress scale compression, immediately followed by decompression')
 parser.add_argument('-i','--infile',dest='infile',
    help= 'the input hdf5 file to read images from')
-parser.add_argument('-l','--compression_level',dest='compression_level',
-   help= 'target level for the compression filter used')
+parser.add_argument('-J','--J2K', dest='j2k_target_compression_ratio', type=int,
+   help= 'JPEG-2000 target compression ratio, immediately followed by decompression')
 parser.add_argument('-m','--out_master',dest='out_master',default='out_master',
    help= 'the output hdf5 master to which to write metadata')
 parser.add_argument('-N','--last_image', dest='last_image', type=int,
@@ -127,19 +137,18 @@ parser.add_argument('-v','--verbose',dest='verbose',action='store_true',
    help= 'provide addtional information')
 args = vars(parser.parse_args())
 
-h5py._hl.filters._COMP_FILTERS['blosc']    =32001
-h5py._hl.filters._COMP_FILTERS['lz4']      =32004
-h5py._hl.filters._COMP_FILTERS['bshuf']    =32008
-h5py._hl.filters._COMP_FILTERS['zfp']      =32013
-h5py._hl.filters._COMP_FILTERS['zstd']     =32015
-h5py._hl.filters._COMP_FILTERS['sz']       =32017
-h5py._hl.filters._COMP_FILTERS['fcidecomp']=32018
-h5py._hl.filters._COMP_FILTERS['jpeg']     =32019
-h5py._hl.filters._COMP_FILTERS['sz3']      =32024
-h5py._hl.filters._COMP_FILTERS['blosc2']   =32026
-h5py._hl.filters._COMP_FILTERS['j2k']      =32029
-h5py._hl.filters._COMP_FILTERS['hcomp']    =32030
-
+#h5py._hl.filters._COMP_FILTERS['blosc']    =32001
+#h5py._hl.filters._COMP_FILTERS['lz4']      =32004
+#h5py._hl.filters._COMP_FILTERS['bshuf']    =32008
+#h5py._hl.filters._COMP_FILTERS['zfp']      =32013
+#h5py._hl.filters._COMP_FILTERS['zstd']     =32015
+#h5py._hl.filters._COMP_FILTERS['sz']       =32017
+#h5py._hl.filters._COMP_FILTERS['fcidecomp']=32018
+#h5py._hl.filters._COMP_FILTERS['jpeg']     =32019
+#h5py._hl.filters._COMP_FILTERS['sz3']      =32024
+#h5py._hl.filters._COMP_FILTERS['blosc2']   =32026
+#h5py._hl.filters._COMP_FILTERS['j2k']      =32029
+#h5py._hl.filters._COMP_FILTERS['hcomp']    =32030
 
 if args['verbose'] == True:
      print(args)
@@ -157,8 +166,7 @@ try:
         print('l_bnl_compress.py: detector: ', detector)
 except:
     print('l_bnl_compress.py: detector not found')
-    fin.close()
-    sys.exit(-1)
+    detector='unknown'
 
 try:
     description=detector['description']
@@ -167,18 +175,16 @@ try:
         print('                 detector/description[()]: ', description[()])
 except:
     print('l_bnl_compress.py: detector/description not found')
-    fin.close()
-    sys.exit(-1) 
+    description='unknown'
 
 try:
     detector_number=detector['detector_number']
     if args['verbose'] == True:
-        print('l_bnl_compress.py: detector/detector_number: ', detector_number)
-        print('                 detector/detector_number[()]: ', detector_number[()])
+        print('l_bnl_compress.py: detector_number: ', detector_number)
+        print('                 detector_number[()]: ', detector_number[()])
 except:
     print('l_bnl_compress.py: detector/detector_number not found')
-    fin.close()
-    sys.exit(-1)
+    detector_number='unknown'
 
 try:
     bit_depth_image=detector['bit_depth_image']
@@ -187,8 +193,7 @@ try:
         print('                 detector/bit_depth_image[()]: ', bit_depth_image[()])
 except:
     print('l_bnl_compress.py: detector/bit_depth_image not found')
-    fin.close()
-    sys.exit(-1)
+    bit_depth_image='unknown'
 
 try:
     thickness=detector['sensor_thickness']
@@ -197,8 +202,7 @@ try:
         print('                 detector/sensor_thickness[()]: ', thickness[()])
 except:
     print('l_bnl_compress.py: detector/sensor_thickness not found')
-    fin.close()
-    sys.exit(-1)
+    thickness='unknown'
 
 try:
     beamx=detector['beam_center_x']
@@ -453,7 +457,7 @@ except:
 
 block_shape=data_start.shape
 if  len(block_shape) != 3:
-    print('l_bnl_compress.py: dimension of /entry/data data block is not 3')
+    print('compress.py: dimension of /entry/data data block is not 3')
     fin.close()
     sys.exit
 
@@ -479,7 +483,8 @@ for image in range(args['first_image'],(args['last_image'])+1,args['sum_range'])
         lim_image = args['last_image']+1
     prev_out=None
     for cur_image in range(image,lim_image):
-        print('image, (block,offset): ',cur_image,conv_image_to_block_offset(cur_image,number_per_block))
+        print('image, (block,offset): ',cur_image,\
+          conv_image_to_block_offset(cur_image,number_per_block))
         cur_source=conv_image_to_block_offset(cur_image,number_per_block)
         cur_source_img_block='data_'+str(cur_source[0]+block_start).zfill(6)
         cur_source_img_imgno=cur_source[1]
@@ -517,65 +522,121 @@ fout[master]['entry'].attrs.create('NXclass','NXentry')
 fout[master]['entry'].create_group('data') 
 fout[master]['entry']['data'].attrs.create('NXclass','NXdata') 
 fout[master]['entry'].create_group('instrument') 
+fout[master]['entry']['instrument'].attrs.create('NXclass','NXinstrument') 
 fout[master]['entry'].create_group('sample') 
+fout[master]['entry']['sample'].attrs.create('NXclass','NXsample') 
 fout[master]['entry']['sample'].create_group('beam') 
+fout[master]['entry']['sample']['beam'].attrs.create('NXclass','NXbeam') 
 fout[master]['entry']['sample'].create_group('goniometer') 
+fout[master]['entry']['sample']['goniometer'].attrs.create('NXclass','NXgoniometer') 
 fout[master]['entry']['instrument'].attrs.create('NXclass','NXinstrument')
 fout[master]['entry']['instrument'].create_group('detector')
-fout[master]['entry']['instrument']['detector'].attrs.create('NXclass','NXdetector')
-fout[master]['entry']['instrument']['detector'].create_dataset('description',shape=description.shape,dtype=description.dtype)
-fout[master]['entry']['instrument']['detector']['description'][()]=description[()]
-fout[master]['entry']['instrument']['detector'].create_dataset('detector_number',shape=detector_number.shape,dtype=detector_number.dtype)
-fout[master]['entry']['instrument']['detector']['detector_number'][()]=detector_number[()]
-fout[master]['entry']['instrument']['detector'].create_dataset('bit_depth_image',shape=bit_depth_image.shape,dtype=bit_depth_image.dtype)
-fout[master]['entry']['instrument']['detector']['bit_depth_image'][()]=bit_depth_image[()]
-fout[master]['entry']['instrument']['detector'].create_dataset('sensor_thickness',shape=thickness.shape,dtype=thickness.dtype)
-fout[master]['entry']['instrument']['detector']['sensor_thickness'][()]=thickness[()]
-fout[master]['entry']['instrument']['detector']['sensor_thickness'].attrs.create('units',thickness.attrs['units'])
-fout[master]['entry']['instrument']['detector'].create_dataset('beam_center_x',shape=beamx.shape,dtype=beamx.dtype)
-fout[master]['entry']['instrument']['detector']['beam_center_x'][()]=beamx[()]/int(args['bin_range'])
-fout[master]['entry']['instrument']['detector']['beam_center_x'].attrs.create('units',beamx.attrs['units'])
-fout[master]['entry']['instrument']['detector'].create_dataset('beam_center_y',shape=beamy.shape,dtype=beamy.dtype)
-fout[master]['entry']['instrument']['detector']['beam_center_y'][()]=beamy[()]/int(args['bin_range'])
-fout[master]['entry']['instrument']['detector']['beam_center_y'].attrs.create('units',beamy.attrs['units'])
-fout[master]['entry']['instrument']['detector'].create_dataset('count_time',shape=count_time.shape,dtype=count_time.dtype)
-fout[master]['entry']['instrument']['detector']['count_time'][()]=count_time[()]*int(args['sum_range'])
-fout[master]['entry']['instrument']['detector']['count_time'].attrs.create('units',count_time.attrs['units'])
-fout[master]['entry']['instrument']['detector'].create_dataset('detector_distance',shape=distance.shape,dtype=distance.dtype)
-fout[master]['entry']['instrument']['detector']['detector_distance'][()]=distance[()]
-fout[master]['entry']['instrument']['detector']['detector_distance'].attrs.create('units',distance.attrs['units'])
-fout[master]['entry']['instrument']['detector'].create_dataset('frame_time',shape=frame_time.shape,dtype=frame_time.dtype)
-fout[master]['entry']['instrument']['detector']['frame_time'][()]=frame_time[()]*int(args['sum_range'])
-fout[master]['entry']['instrument']['detector']['frame_time'].attrs.create('units',frame_time.attrs['units'])
-fout[master]['entry']['instrument']['detector'].create_dataset('x_pixel_size',shape=pixelsizex.shape,dtype=pixelsizex.dtype)
-fout[master]['entry']['instrument']['detector']['x_pixel_size'][()]=pixelsizex[()]*int(args['sum_range'])
-fout[master]['entry']['instrument']['detector']['x_pixel_size'].attrs.create('units',pixelsizex.attrs['units'])
-fout[master]['entry']['instrument']['detector'].create_dataset('y_pixel_size',shape=pixelsizey.shape,dtype=pixelsizey.dtype)
-fout[master]['entry']['instrument']['detector']['y_pixel_size'][()]=pixelsizey[()]*int(args['sum_range'])
-fout[master]['entry']['instrument']['detector']['y_pixel_size'].attrs.create('units',pixelsizey.attrs['units'])
-fout[master]['entry']['instrument']['detector'].create_group('detectorSpecific')
+fout[master]['entry']['instrument']['detector'].attrs.create(\
+    'NXclass','NXdetector')
+fout[master]['entry']['instrument']['detector'].create_dataset(\
+    'description',shape=description.shape,dtype=description.dtype)
+fout[master]['entry']['instrument']['detector']['description'][()]=\
+    description[()]
+fout[master]['entry']['instrument']['detector'].create_dataset(\
+    'detector_number',shape=detector_number.shape,dtype=detector_number.dtype)
+fout[master]['entry']['instrument']['detector']['detector_number'][()]=\
+    detector_number[()]
+fout[master]['entry']['instrument']['detector'].create_dataset(\
+    'bit_depth_image',shape=bit_depth_image.shape,dtype=bit_depth_image.dtype)
+fout[master]['entry']['instrument']['detector']['bit_depth_image'][()]=\
+    bit_depth_image[()]
+fout[master]['entry']['instrument']['detector'].create_dataset(\
+    'sensor_thickness',shape=thickness.shape,dtype=thickness.dtype)
+fout[master]['entry']['instrument']['detector']['sensor_thickness'][()]=\
+    thickness[()]
+fout[master]['entry']['instrument']['detector']['sensor_thickness'].attrs.create(\
+    'units',thickness.attrs['units'])
+fout[master]['entry']['instrument']['detector'].create_dataset(\
+    'beam_center_x',shape=beamx.shape,dtype=beamx.dtype)
+fout[master]['entry']['instrument']['detector']['beam_center_x'][()]=\
+    beamx[()]/int(args['bin_range'])
+fout[master]['entry']['instrument']['detector']['beam_center_x'].attrs.create(\
+    'units',beamx.attrs['units'])
+fout[master]['entry']['instrument']['detector'].create_dataset(\
+    'beam_center_y',shape=beamy.shape,dtype=beamy.dtype)
+fout[master]['entry']['instrument']['detector']['beam_center_y'][()]\
+    =beamy[()]/int(args['bin_range'])
+fout[master]['entry']['instrument']['detector']['beam_center_y'].attrs.create(\
+   'units',beamy.attrs['units'])
+fout[master]['entry']['instrument']['detector'].create_dataset(\
+    'count_time',shape=count_time.shape,dtype=count_time.dtype)
+fout[master]['entry']['instrument']['detector']['count_time'][()]=\
+    count_time[()]*int(args['sum_range'])
+fout[master]['entry']['instrument']['detector']['count_time'].attrs.create(\
+    'units',count_time.attrs['units'])
+fout[master]['entry']['instrument']['detector'].create_dataset(\
+    'detector_distance',shape=distance.shape,dtype=distance.dtype)
+fout[master]['entry']['instrument']['detector']['detector_distance'][()]=\
+    distance[()]
+fout[master]['entry']['instrument']['detector']['detector_distance'].attrs.create(\
+    'units',distance.attrs['units'])
+fout[master]['entry']['instrument']['detector'].create_dataset(\
+    'frame_time',shape=frame_time.shape,dtype=frame_time.dtype)
+fout[master]['entry']['instrument']['detector']['frame_time'][()]=\
+    frame_time[()]*int(args['sum_range'])
+fout[master]['entry']['instrument']['detector']['frame_time'].attrs.create(\
+    'units',frame_time.attrs['units'])
+fout[master]['entry']['instrument']['detector'].create_dataset(\
+    'x_pixel_size',shape=pixelsizex.shape,dtype=pixelsizex.dtype)
+fout[master]['entry']['instrument']['detector']['x_pixel_size'][()]=\
+    pixelsizex[()]*int(args['sum_range'])
+fout[master]['entry']['instrument']['detector']['x_pixel_size'].attrs.create(\
+    'units',pixelsizex.attrs['units'])
+fout[master]['entry']['instrument']['detector'].create_dataset(\
+    'y_pixel_size',shape=pixelsizey.shape,dtype=pixelsizey.dtype)
+fout[master]['entry']['instrument']['detector']['y_pixel_size'][()]=\
+    pixelsizey[()]*int(args['sum_range'])
+fout[master]['entry']['instrument']['detector']['y_pixel_size'].attrs.create(\
+    'units',pixelsizey.attrs['units'])
+fout[master]['entry']['instrument']['detector'].create_group(\
+    'detectorSpecific')
 new_shape=conv_image_shqpe((int(ypixels[()]),int(xpixels[()])),int(args['bin_range']))
-fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset('nimages',shape=xnimages.shape,dtype=xnimages.dtype)
-fout[master]['entry']['instrument']['detector']['detectorSpecific']['nimages'][()]=new_image
-fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset('ntrigger',shape=xntrigger.shape,dtype=xntrigger.dtype)
-fout[master]['entry']['instrument']['detector']['detectorSpecific']['ntrigger'][()]=new_image
-fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset('x_pixels_in_detector',shape=xpixels.shape,dtype=xpixels.dtype)
-fout[master]['entry']['instrument']['detector']['detectorSpecific']['x_pixels_in_detector'][()]=new_shape[1]
-fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset('y_pixels_in_detector',shape=ypixels.shape,dtype=ypixels.dtype)
-fout[master]['entry']['instrument']['detector']['detectorSpecific']['y_pixels_in_detector'][()]=new_shape[0]
-fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset('software_version',shape=software_version.shape,dtype=software_version.dtype)
-fout[master]['entry']['instrument']['detector']['detectorSpecific']['software_version'][()]=software_version[()]
-fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset('saturation_value',shape=countrate_cutoff.shape,dtype=countrate_cutoff.dtype)
-fout[master]['entry']['instrument']['detector']['detectorSpecific']['saturation_value'][()]=satval
-fout[master]['entry']['sample']['beam'].create_dataset('incident_wavelength',shape=wavelength.shape,dtype=wavelength.dtype)
-fout[master]['entry']['sample']['beam']['incident_wavelength'][()]=wavelength[()]
-fout[master]['entry']['sample']['beam']['incident_wavelength'].attrs.create('units',wavelength.attrs['units'])
-fout[master]['entry']['sample']['goniometer'].create_dataset('omega_range_average',shape=osc_width.shape,dtype=osc_width.dtype)
-fout[master]['entry']['sample']['goniometer']['omega_range_average'][()]=osc_width[()]*int(args['sum_range'])
-fout[master]['entry']['sample']['goniometer']['omega_range_average'].attrs.create('units',osc_width.attrs['units'])
-fout[master]['entry']['sample']['goniometer'].create_dataset('omega',shape=angles.shape,dtype=angles.dtype) 
-fout[master]['entry']['sample']['goniometer']['omega'][0:(int(args['last_image'])-int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]\
-    =angles[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
+fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
+    'nimages',shape=xnimages.shape,dtype=xnimages.dtype)
+fout[master]['entry']['instrument']['detector']['detectorSpecific']['nimages'][()]\
+    =new_image
+fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
+    'ntrigger',shape=xntrigger.shape,dtype=xntrigger.dtype)
+fout[master]['entry']['instrument']['detector']['detectorSpecific']['ntrigger'][()]=\
+    new_image
+fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
+    'x_pixels_in_detector',shape=xpixels.shape,dtype=xpixels.dtype)
+fout[master]['entry']['instrument']['detector']['detectorSpecific'][\
+    'x_pixels_in_detector'][()]=new_shape[1]
+fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
+    'y_pixels_in_detector',shape=ypixels.shape,dtype=ypixels.dtype)
+fout[master]['entry']['instrument']['detector']['detectorSpecific']['y_pixels_in_detector'][()]=\
+    new_shape[0]
+fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
+    'software_version',shape=software_version.shape,dtype=software_version.dtype)
+fout[master]['entry']['instrument']['detector']['detectorSpecific']['software_version'][()]=\
+    software_version[()]
+fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
+    'saturation_value',shape=countrate_cutoff.shape,dtype=countrate_cutoff.dtype)
+fout[master]['entry']['instrument']['detector']['detectorSpecific']['saturation_value'][()]=\
+    satval
+fout[master]['entry']['sample']['beam'].create_dataset(\
+    'incident_wavelength',shape=wavelength.shape,dtype=wavelength.dtype)
+fout[master]['entry']['sample']['beam']['incident_wavelength'][()]=\
+    wavelength[()]
+fout[master]['entry']['sample']['beam']['incident_wavelength'].attrs.create(\
+    'units',wavelength.attrs['units'])
+fout[master]['entry']['sample']['goniometer'].create_dataset(\
+    'omega_range_average',shape=osc_width.shape,dtype=osc_width.dtype)
+fout[master]['entry']['sample']['goniometer']['omega_range_average'][()]=\
+    osc_width[()]*int(args['sum_range'])
+fout[master]['entry']['sample']['goniometer']['omega_range_average'].attrs.create(\
+    'units',osc_width.attrs['units'])
+fout[master]['entry']['sample']['goniometer'].create_dataset(\
+    'omega',shape=angles.shape,dtype=angles.dtype) 
+fout[master]['entry']['sample']['goniometer']['omega'][0:(int(args['last_image'])-\
+    int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
+    angles[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
 
 
 for nout_block in range(1,out_number_of_blocks+1):
@@ -589,36 +650,46 @@ for nout_block in range(1,out_number_of_blocks+1):
     fout[nout_block]['entry'].attrs.create('NXclass','NXentry')
     fout[nout_block]['entry'].create_group('data')
     fout[nout_block]['entry']['data'].attrs.create('NXclass','NXdata')
-    if args['compression'] == None:
-        fout[nout_block]['entry']['data'].create_dataset('data',
-            shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
-            maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
-            dtype='i2',chunks=(1,nout_data_shape[0],nout_data_shape[1]))
-    else:
-        try:
-            xcl=int(args['compression_level'])
-            xcl = (xcl,)
-        except:
-            xclsplit=args['compression_level'].split(',')
-            print("xclsplit: ",xclsplit)
-            xcl=tuple(map(int,xclsplit))
-        try:
-            fout[nout_block]['entry']['data'].create_dataset('data',
-                shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
-                maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
-                dtype='i2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
-                compression=args['compression'],compression_opts=xcl)
-        except:
-            fout[nout_block]['entry']['data'].create_dataset('data',
-                shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
-                maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
-                dtype='i2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
-                compression=int(args['compression']),compression_opts=xcl)
-
+    fout[nout_block]['entry']['data'].create_dataset('data',
+        shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
+        maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
+        dtype='u2',chunks=(1,nout_data_shape[0],nout_data_shape[1]))
     print("fout[nout_block]['entry']['data']['data']: ",fout[nout_block]['entry']['data']['data'])
     for out_image in range(nout_image,lim_nout_image):
-        fout[nout_block]['entry']['data']['data'][out_image-nout_image,0:nout_data_shape[0],0:nout_data_shape[1]] \
-          =new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]]
+        if args['hcomp_scale']==None and args['j2k_target_compression_ratio']==None: 
+            fout[nout_block]['entry']['data']['data'][out_image-nout_image,0:nout_data_shape[0],0:nout_data_shape[1]] \
+              =np.clip(new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]],0,satval)
+        elif args['hcomp_scale']!=None:
+            myscale=args['hcomp_scale']
+            if myscale < 1 :
+                myscale=16
+            img16=new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]].astype('u2')
+            compressed_hdu = fits.CompImageHDU(data=img16, compression_type='HCOMPRESS_1', hcomp_scale=myscale)
+            decompressed_data = np.clip(compressed_hdu.data,0,satval)
+            print('decompressed_data: ',decompressed_data)
+            fout[nout_block]['entry']['data']['data'][out_image-nout_image, \
+                0:nout_data_shape[0],0:nout_data_shape[1]] \
+                = np.asarray(decompressed_data,dtype='u2')
+        else:
+            mycrat=int(args['j2k_target_compression_ratio'])
+            if mycrat < 1:
+                mycrat=125
+            print("mycrat: ",mycrat)
+            img16=new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]].astype('u2')
+            outtemp=args['out_file']+"_"+str(out_image).zfill(6)+".j2k"
+            print("outtemp: ",outtemp)
+            j2k=glymur.Jp2k(outtemp, data=img16, cratios=[mycrat])
+            jdecomped = j2k[:]
+            print("jdecompd: ",jdecomped)
+            arr_final = np.array(jdecomped, dtype='u2')
+            print("arr_final: ",arr_final)
+            fout[nout_block]['entry']['data']['data'][out_image-nout_image, \
+                0:nout_data_shape[0],0:nout_data_shape[1]] \
+                = np.clip(arr_final,0,satval)
+            del arr_final
+            del jdecomped
+            del j2k
+            os.remove(outtemp)
     fout[nout_block].close()
     fout[master]['entry']['data']["data_"+str(nout_block).zfill(6)] \
         = h5py.ExternalLink(args['out_file']+"_"+str(nout_block).zfill(6)+".h5", "/entry/data/data")
