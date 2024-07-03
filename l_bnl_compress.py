@@ -87,7 +87,7 @@ def bin(old_image,bin_range,satval):
     '''
 
     if bin_range < 2:
-        return old_image
+        return (old_image.view(dtype='i2')).clip(0,satval)
     s=old_image.shape
     if len(s) != 2:
         print('l_bnl_compress.py: invalid image shape for 2D binning')
@@ -496,7 +496,7 @@ for image in range(args['first_image'],(args['last_image'])+1,args['sum_range'])
         if cur_image > image:
             prev_out = np.clip(prev_out+cur_source,0,satval)
         else:
-            prev_out = cur_source
+            prev_out = (cur_source.view(dtype='i2')).clip(0,satval)
     new_image = new_image+1
     new_images[new_image]=prev_out
 
