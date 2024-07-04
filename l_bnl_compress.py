@@ -1,9 +1,9 @@
 '''l_bnl_compress.py, lossy, but not lossy, compresss,
        a script to apply lossy compression to HDF5 MX image files.
  
-usage: l_bnl_compress.py [-h] [-1 FIRST_IMAGE] [-b BIN_RANGE] [-d DATA_BLOCK_SIZE] \
+usage: l_bnl_compress.py [-h] [-1 FIRST_IMAGE] [-b BIN_RANGE] [-c compression] [-d DATA_BLOCK_SIZE] \
                          [-H HCOMP_SCALE] [-i INFILE] [-J J2K_TARGET_COMPRESSION_RATIO] \
-                         [-m OUT_MASTER] [-N LAST_IMAGE] [-o OUT_FILE] \
+                         [-l COMPRESSION-LEVEL] [-m OUT_MASTER] [-N LAST_IMAGE] [-o OUT_FILE] \
                          [-s SUM_RANGE] [-v]
 
 Bin and sum images from a range
@@ -48,6 +48,43 @@ import hdf5plugin
 import tempfile
 from astropy.io.fits.hdu.compressed._codecs import HCompress1
 
+
+def conv_pixel_mask(old_mask,bin_range):
+    ''' conv_pixel_mask -- returns a new pixel_mask
+    array, adjusting for binning
+    '''
+
+    if bin_range < 2 :
+        return np.asarray(old_mask,dtype='u4')
+    old_shape=old_mask.shape
+    if len(old_shape) != 2:
+        print('l_bnl_compress.py: invalid mask shape for 2D binning')
+        return None
+    sy=old_shape[0]
+    nsy=int(sy+bin_range-1)//bin_range
+    ymargin=0
+    if nsy*bin_range > sy:
+        ymargin=bin_range-(sy%bin_range)
+    sx=old_shape[1]
+    nsx=int(sx+bin_range-1)//bin_range
+    xmargin=0
+    if nsx*bin_range > sx:
+        xmargin=bin_range-(sx%bin_range)
+    if ((xmargin > 0) or (ymargin > 0)):
+        old_mask_rev=np.pad(np.asarray(old_mask,dtype='u4'),((0,ymargin),(0,xmargin)),'constant',constant_values=((0,0),(0,0)))
+    else:
+        old_mask_rev=np.asaary(old_mask,dtype='u4')
+    new_mask=np.zeros((nsy,nsx),dtype='u4')
+    for iy in range(0,sy,bin_range):
+        for ix in range(0,sx,bin_range):
+            for iyy in range(0,bin_range):
+                for ixx in range(0,bin_range):
+                    if ix+ixx < sx and iy+iyy < sy:
+                        if old_mask_rev[iy+iyy,ix+ixx] != 0:
+                            new_mask[iy//bin_range,ix//bin_range] = new_mask[iy//bin_range,ix//bin_range]| old_mask_rev[iy+iyy,ix+ixx]
+    return new_mask
+
+
 def conv_image_to_block_offset(img,npb):
     ''' conv_image_to_block_offset(img,npb)
 
@@ -87,7 +124,7 @@ def bin(old_image,bin_range,satval):
     '''
 
     if bin_range < 2:
-        return (old_image.view(dtype='i2')).clip(0,satval)
+        return (np.asarray(old_image,dtype='i2')).clip(0,satval)
     s=old_image.shape
     if len(s) != 2:
         print('l_bnl_compress.py: invalid image shape for 2D binning')
@@ -103,10 +140,10 @@ def bin(old_image,bin_range,satval):
     if nsx*bin_range > sx:
         xmargin=bin_range-(sx%bin_range)
     if ((xmargin > 0) or (ymargin > 0)):
-        new_image=np.clip(np.pad(old_image.view(dtype='i2'),((0,ymargin),(0,xmargin)),'constant',constant_values=((0,0),(0,0))),0,satval)
+        new_image=np.clip(np.pad(np.asarray(old_image,dtype='i2'),((0,ymargin),(0,xmargin)),'constant',constant_values=((0,0),(0,0))),0,satval)
     else:
-        new_image=np.clip(old_image.view(dtype='i2'),0,satval)
-    new_image=(new_image.view(dtype='i2')).clip(0,satval)
+        new_image=np.clip(np.asarray(old_image,dtype='i2'),0,satval)
+    new_image=(np.asarray(new_image,dtype='i2')).clip(0,satval)
     new_image=np.round(ski.measure.block_reduce(new_image,(bin_range,bin_range),np.sum))
     new_image=np.asarray(np.clip(new_image,0,satval),dtype='i2')
     return new_image
@@ -117,6 +154,10 @@ parser.add_argument('-1','--first_image', dest='first_image', type=int,
    help= 'first selected image counting from 1')
 parser.add_argument('-b','--bin', dest='bin_range', type=int,
    help= 'an integer image binning range (1 ...) to apply to each selected image') 
+parser.add_argument('-c','--compression', dest='compression',
+   help= 'optional compression, bslz4, bszstd, or bshuf')
+parser.add_argument('-l','--compression-level', dest='compression-level', type=int,
+   help= 'optional compression level for bszstd')
 parser.add_argument('-d','--data_block_size', dest='data_block_size', type=int,
    help= 'data block size in images for out_file')
 parser.add_argument('-H','--Hcompress', dest='hcomp_scale', type=int,
@@ -125,7 +166,7 @@ parser.add_argument('-i','--infile',dest='infile',
    help= 'the input hdf5 file to read images from')
 parser.add_argument('-J','--J2K', dest='j2k_target_compression_ratio', type=int,
    help= 'JPEG-2000 target compression ratio, immediately followed by decompression')
-parser.add_argument('-m','--out_master',dest='out_master',default='out_master',
+parser.add_argument('-m','--out_master',dest='out_master',
    help= 'the output hdf5 master to which to write metadata')
 parser.add_argument('-N','--last_image', dest='last_image', type=int,
    help= 'last selected image counting from 1')
@@ -203,6 +244,16 @@ try:
 except:
     print('l_bnl_compress.py: detector/sensor_thickness not found')
     thickness='unknown'
+
+pixel_mask=None
+try:
+    pixel_mask=detector['pixel_mask']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: detector/pixel_mask: ', pixel_mask)
+        print('                 detector/pixel_mask[()]: ', pixel_mask[()])
+except:
+    print('l_bnl_compress.py: detector/pixel_mask not found')
+    pixel_mask=None
 
 try:
     beamx=detector['beam_center_x']
@@ -374,6 +425,16 @@ except:
             print('l_bnl_sinsum.py: ...count_cutoff not found, using 32765')
             satval=32765
 
+dS_pixel_mask=None
+try:
+    dS_pixel_mask=detectorSpecific['pixel_mask']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: detectorSpecific/pixel_mask: ', dS_pixel_mask)
+        print('                 detectorSpecific/pixel_mask[()]: ', dS_pixel_mask[()])
+except:
+    print('l_bnl_compress.py: detectorSpecific/pixel_mask not found')
+    dS_pixel_mask=None
+
 try:
     wavelength=fin['entry']['sample']['beam']['incident_wavelength']
     if args['verbose'] == True:
@@ -496,7 +557,7 @@ for image in range(args['first_image'],(args['last_image'])+1,args['sum_range'])
         if cur_image > image:
             prev_out = np.clip(prev_out+cur_source,0,satval)
         else:
-            prev_out = (cur_source.view(dtype='i2')).clip(0,satval)
+            prev_out = (np.asarray(cur_source,dtype='i2')).clip(0,satval)
     new_image = new_image+1
     new_images[new_image]=prev_out
 
@@ -516,6 +577,8 @@ fout={}
 
 # create the master file
 master=0
+if args['out_master']==None:
+    args['out_master']=args['out_file']+"_master"
 fout[master] = h5py.File(args['out_master']+".h5",'w')
 fout[master].create_group('entry') 
 fout[master]['entry'].attrs.create('NXclass','NXentry')
@@ -593,6 +656,13 @@ fout[master]['entry']['instrument']['detector']['y_pixel_size'][()]=\
     pixelsizey[()]*int(args['sum_range'])
 fout[master]['entry']['instrument']['detector']['y_pixel_size'].attrs.create(\
     'units',pixelsizey.attrs['units'])
+if pixel_mask!=None:
+    new_pixel_mask=conv_pixel_mask(pixel_mask,int(args['bin_range']))
+    fout[master]['entry']['instrument']['detector'].create_dataset(\
+        'pixel_mask',shape=new_pixel_mask.shape,dtype='u4',\
+        data=new_pixel_mask,\
+        **hdf5plugin.Bitshuffle(nelems=0,cname='lz4'))
+    del new_pixel_mask
 fout[master]['entry']['instrument']['detector'].create_group(\
     'detectorSpecific')
 new_shape=conv_image_shqpe((int(ypixels[()]),int(xpixels[()])),int(args['bin_range']))
@@ -620,6 +690,13 @@ fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_datas
     'saturation_value',shape=countrate_cutoff.shape,dtype=countrate_cutoff.dtype)
 fout[master]['entry']['instrument']['detector']['detectorSpecific']['saturation_value'][()]=\
     satval
+if dS_pixel_mask!=None:
+    new_pixel_mask=conv_pixel_mask(dS_pixel_mask,int(args['bin_range']))
+    fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
+        'pixel_mask',shape=new_pixel_mask.shape,dtype='u4',\
+        data=new_pixel_mask,\
+        **hdf5plugin.Bitshuffle(nelems=0,cname='lz4'))
+    del new_pixel_mask
 fout[master]['entry']['sample']['beam'].create_dataset(\
     'incident_wavelength',shape=wavelength.shape,dtype=wavelength.dtype)
 fout[master]['entry']['sample']['beam']['incident_wavelength'][()]=\
@@ -650,10 +727,37 @@ for nout_block in range(1,out_number_of_blocks+1):
     fout[nout_block]['entry'].attrs.create('NXclass','NXentry')
     fout[nout_block]['entry'].create_group('data')
     fout[nout_block]['entry']['data'].attrs.create('NXclass','NXdata')
-    fout[nout_block]['entry']['data'].create_dataset('data',
-        shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
-        maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
-        dtype='u2',chunks=(1,nout_data_shape[0],nout_data_shape[1]))
+    if args['compression']==None:
+        fout[nout_block]['entry']['data'].create_dataset('data',
+            shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
+            maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
+            dtype='u2',chunks=(1,nout_data_shape[0],nout_data_shape[1]))
+    elif args['compression']=='bshuf' or args['compression']=='BSHUF':
+        fout[nout_block]['entry']['data'].create_dataset('data',
+            shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
+            maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
+            dtype='u2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
+            **hdf5plugin.Bitshuffle(nelems=0,cname='none'))
+    elif args['compression']=='bslz4' or args['compression']=='BSLZ4':
+        fout[nout_block]['entry']['data'].create_dataset('data',
+            shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
+            maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
+            dtype='u2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
+            **hdf5plugin.Bitshuffle(nelems=0,cname='lz4'))
+    elif args['compression']=='bzstd' or args['compression']=='BSZSTD':
+        if args['compression-level'] == None:
+            clevel=3
+        elif int(args['compression-level']) > 22:
+            clevel=22
+        elif int(args['compression-level']) < -2:
+            clevel=-2
+        else:
+            clevel=int(args['compression-level'])
+        fout[nout_block]['entry']['data'].create_dataset('data',
+            shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
+            maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
+            dtype='u2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
+            **hdf5plugin.Bitshuffle(nelems=0,cname='zstd',clevel=clevel))
     print("fout[nout_block]['entry']['data']['data']: ",fout[nout_block]['entry']['data']['data'])
     for out_image in range(nout_image,lim_nout_image):
         if args['hcomp_scale']==None and args['j2k_target_compression_ratio']==None: 
