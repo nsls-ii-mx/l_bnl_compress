@@ -1,7 +1,7 @@
 '''l_bnl_compress.py, lossy, but not lossy, compresss,
        a script to apply lossy compression to HDF5 MX image files.
  
-usage: l_bnl_compress.py [-h] [-1 FIRST_IMAGE] [-b BIN_RANGE] [-c compression] [-d DATA_BLOCK_SIZE] \
+usage: l_bnl_compress.py [-h] [-1 FIRST_IMAGE] [-b BIN_RANGE] [-c COMPRESSION] [-d DATA_BLOCK_SIZE] \
                          [-H HCOMP_SCALE] [-i INFILE] [-J J2K_TARGET_COMPRESSION_RATIO] \
                          [-l COMPRESSION-LEVEL] [-m OUT_MASTER] [-N LAST_IMAGE] [-o OUT_FILE] \
                          [-s SUM_RANGE] [-v]
@@ -14,14 +14,18 @@ options:
                         first selected image counting from 1
   -b BIN_RANGE, --bin BIN_RANGE
                         an integer image binning range (1 ...) to apply to each selected image
+  -c COMPRESSION, --compression COMPRESSION
+                        optional compression, bslz4, bszstd, or bshuf
   -d DATA_BLOCK_SIZE, --data_block_size DATA_BLOCK_SIZE
                         data block size in images for out_file
   -H HCOMP_SCALE, --Hcompress HCOMP_SCALE
                         Hcompress scale compression, immediately followed by decompression
   -i INFILE, --infile INFILE
                         the input hdf5 file to read images from
-  -J J2K_TARGET_COMPRESSION_RATIO, -J2K J2K_TARGET_COMPRESSION_RATIO
+  -J J2K_TARGET_COMPRESSION_RATIO, --J2K J2K_TARGET_COMPRESSION_RATIO
                         JPEG-2000 target compression ratio, immediately followed by decompression
+  -l COMPRESSION-LEVEL, --compression-level COMPRESSION-LEVEL
+                        optional compression level for bszstd
   -m OUT_MASTER, --out_master OUT_MASTER
                         the output hdf5 master to which to write metadata
   -N LAST_IMAGE, --last_image LAST_IMAGE
@@ -156,8 +160,6 @@ parser.add_argument('-b','--bin', dest='bin_range', type=int,
    help= 'an integer image binning range (1 ...) to apply to each selected image') 
 parser.add_argument('-c','--compression', dest='compression',
    help= 'optional compression, bslz4, bszstd, or bshuf')
-parser.add_argument('-l','--compression-level', dest='compression-level', type=int,
-   help= 'optional compression level for bszstd')
 parser.add_argument('-d','--data_block_size', dest='data_block_size', type=int,
    help= 'data block size in images for out_file')
 parser.add_argument('-H','--Hcompress', dest='hcomp_scale', type=int,
@@ -166,6 +168,8 @@ parser.add_argument('-i','--infile',dest='infile',
    help= 'the input hdf5 file to read images from')
 parser.add_argument('-J','--J2K', dest='j2k_target_compression_ratio', type=int,
    help= 'JPEG-2000 target compression ratio, immediately followed by decompression')
+parser.add_argument('-l','--compression-level', dest='compression-level', type=int,
+   help= 'optional compression level for bszstd')
 parser.add_argument('-m','--out_master',dest='out_master',
    help= 'the output hdf5 master to which to write metadata')
 parser.add_argument('-N','--last_image', dest='last_image', type=int,

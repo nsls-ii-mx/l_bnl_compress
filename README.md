@@ -1,11 +1,16 @@
 # l_bnl_compress
 Lossy but not lossy compression
 
-usage: l_bnl_compress.py [-h] [-1 FIRST_IMAGE] [-b BIN_RANGE] [-c COMPRESSION] [-d DATA_BLOCK_SIZE]
-                         [-i INFILE] [-l COMPRESSION_LEVEL] [-m OUT_MASTER] [-N LAST_IMAGE] [-o OUT_FILE]
-                         [-s SUM_RANGE] [-v]
+Implementing the lossy compressions described in [Herbert J. Bernstein, Alexei S. Soares, Kimberly Horvat,
+Jean Jakoncic, 2024.  "Massive Compression for High Data Rate Macromolecular Crystallography (HDRMX): 
+"Impact on Diffraction Data and Subsequent Structural Analysis," Journal of Synchrotron Radiation,
+in preparation.]
 
-Bin and sum images from a range and apply compressions
+usage: l_bnl_compress.py [-h] [-1 FIRST_IMAGE] [-b BIN_RANGE] [-c COMPRESSION] [-d DATA_BLOCK_SIZE] \
+                         [-H HCOMP_SCALE] [-i INFILE] [-J J2K_TARGET_COMPRESSION_RATIO] \
+                         [-l COMPRESSION-LEVEL] [-m OUT_MASTER] [-N LAST_IMAGE] [-o OUT_FILE] [-s SUM_RANGE] [-v]
+
+Bin and sum images from a range and apply additional JPEG-2000 or Hcompress compressions
 
 options:
   -h, --help            show this help message and exit
@@ -14,20 +19,50 @@ options:
   -b BIN_RANGE, --bin BIN_RANGE
                         an integer image binning range (1 ...) to apply to each selected image
   -c COMPRESSION, --compression COMPRESSION
-                        compression filter name or id number
+                        optional compression, bslz4, bszstd, or bshuf
   -d DATA_BLOCK_SIZE, --data_block_size DATA_BLOCK_SIZE
                         data block size in images for out_file
+  -H HCOMP_SCALE, --Hcompress HCOMP_SCALE
+                        Hcompress scale compression, immediately followed by decompression
   -i INFILE, --infile INFILE
                         the input hdf5 file to read images from
-  -l COMPRESSION_LEVEL, --compression_level COMPRESSION_LEVEL
-                        target level for the compression filter used
+  -J J2K_TARGET_COMPRESSION_RATIO, --J2K J2K_TARGET_COMPRESSION_RATIO
+                        JPEG-2000 target compression ratio, immediately followed by decompression
+  -l COMPRESSION-LEVEL, --compression-level COMPRESSION-LEVEL
+                        optional compression level for bszstd
   -m OUT_MASTER, --out_master OUT_MASTER
                         the output hdf5 master to which to write metadata
   -N LAST_IMAGE, --last_image LAST_IMAGE
                         last selected image counting from 1
   -o OUT_FILE, --out_file OUT_FILE
-                        the output hdf5 data file out_file_?????? with a .h5 extension are files to which
-                        to write images
+                        the output hdf5 data file out_file_?????? with a .h5 extension are files to which to write images
   -s SUM_RANGE, --sum SUM_RANGE
                         an integer image summing range (1 ...) to apply to the selected images
   -v, --verbose         provide addtional information
+
+
+The program read a NeXus hdf5 file dataset  following the Dectris FileWriter Eiger detector conc=ventions and produces
+a new file dataset following the same conventions.
+
+Installation Prerequisites
+
+This is a python program that needs Python 3 running in a Linux-like environment.  It
+was created on a Debian 12 system and tested on a RHEL8 environment.  It is not likely
+to work with a python version prior to 3.9.  A suitable python with many modules upon
+which l_bnl_compress.py depends can e provided by use of cctbx.python from the DIALS
+package.
+
+The modules upon which this program depends are:
+
+      sys
+      os
+      argparse
+      numpy
+      skimage
+      h5py
+      tifffile
+      astropy
+      glymur
+      hdf5plugin
+
+
