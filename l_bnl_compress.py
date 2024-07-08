@@ -772,12 +772,12 @@ for nout_block in range(1,out_number_of_blocks+1):
             myscale=args['hcomp_scale']
             if myscale < 1 :
                 myscale=16
-            img16=np.clip(new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]],0,satval)
             img32=new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]].astype('i4')
+            img32=np.clip(img32,0,satval)
             hcomp = HCompress1(scale=int(myscale),smooth=False,bytepix=4,nx=nout_data_shape[1],ny=nout_data_shape[0])
             hcomp_data=hcomp.encode(img32)
             hdecomp_data=hcomp.decode(np.frombuffer(hcomp_data,dtype=np.uint8))
-            decompressed_data = hdecomp_data.astype(np.uint16).reshape((img16.shape[0],img16.shape[1]))
+            decompressed_data = hdecomp_data.astype(np.uint16).reshape((nout_data_shape[0],nout_data_shape[1]))
             decompressed_data = np.clip(decompressed_data,0,satval)
             print('decompressed_data: ',decompressed_data)
             fout[nout_block]['entry']['data']['data'][out_image-nout_image, \
@@ -786,6 +786,7 @@ for nout_block in range(1,out_number_of_blocks+1):
             del decompressed_data
             del hdecomp_data
             del hcomp_data
+            del img32
         else:
             mycrat=int(args['j2k_target_compression_ratio'])
             if mycrat < 1:
