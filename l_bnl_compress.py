@@ -772,9 +772,9 @@ for nout_block in range(1,out_number_of_blocks+1):
             myscale=args['hcomp_scale']
             if myscale < 1 :
                 myscale=16
-            img32=new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]].astype('i4')
-            img32=np.clip(img32,0,satval)
-            hcomp = HCompress1(scale=int(myscale),smooth=False,bytepix=4,nx=nout_data_shape[1],ny=nout_data_shape[0])
+            img16=np.asarray(new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]],dtype='i2')
+            img32=(np.clip(img16,0,satval)).astype('i4')
+            hcomp = HCompress1(scale=int(myscale),smooth=False,bytepix=4,nx=nout_data_shape[0],ny=nout_data_shape[1])
             hcomp_data=hcomp.encode(img32)
             hdecomp_data=hcomp.decode(np.frombuffer(hcomp_data,dtype=np.uint8))
             decompressed_data = hdecomp_data.astype(np.uint16).reshape((nout_data_shape[0],nout_data_shape[1]))
