@@ -497,7 +497,7 @@ try:
     angles=fin['entry']['sample']['goniometer']['omega']
     if args['verbose'] == True:
         print('l_bnl_compress.py: entry/sample/omega: ', angles)
-        print('l_bnl_compress.py: entry/sample/omega: ', angles[()])
+        print('l_bnl_compress.py: entry/sample/omega[()]: ', angles[()])
 except:
    print('l_bnl_compress.py: entry/sample/gonimeter/omega not found')
 
@@ -586,21 +586,21 @@ if args['out_master']==None:
     args['out_master']=args['out_file']+"_master"
 fout[master] = h5py.File(args['out_master']+".h5",'w')
 fout[master].create_group('entry') 
-fout[master]['entry'].attrs.create('NXclass','NXentry')
+fout[master]['entry'].attrs.create('NX_class','NXentry')
 fout[master]['entry'].create_group('data') 
-fout[master]['entry']['data'].attrs.create('NXclass','NXdata') 
+fout[master]['entry']['data'].attrs.create('NX_class','NXdata') 
 fout[master]['entry'].create_group('instrument') 
-fout[master]['entry']['instrument'].attrs.create('NXclass','NXinstrument') 
+fout[master]['entry']['instrument'].attrs.create('NX_class','NXinstrument') 
 fout[master]['entry'].create_group('sample') 
-fout[master]['entry']['sample'].attrs.create('NXclass','NXsample') 
+fout[master]['entry']['sample'].attrs.create('NX_class','NXsample') 
 fout[master]['entry']['sample'].create_group('beam') 
-fout[master]['entry']['sample']['beam'].attrs.create('NXclass','NXbeam') 
+fout[master]['entry']['sample']['beam'].attrs.create('NX_class','NXbeam') 
 fout[master]['entry']['sample'].create_group('goniometer') 
-fout[master]['entry']['sample']['goniometer'].attrs.create('NXclass','NXgoniometer') 
-fout[master]['entry']['instrument'].attrs.create('NXclass','NXinstrument')
+fout[master]['entry']['sample']['goniometer'].attrs.create('NX_class','NXgoniometer') 
+fout[master]['entry']['instrument'].attrs.create('NX_class','NXinstrument')
 fout[master]['entry']['instrument'].create_group('detector')
 fout[master]['entry']['instrument']['detector'].attrs.create(\
-    'NXclass','NXdetector')
+    'NX_class','NXdetector')
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'description',shape=description.shape,dtype=description.dtype)
 fout[master]['entry']['instrument']['detector']['description'][()]=\
@@ -729,9 +729,9 @@ for nout_block in range(1,out_number_of_blocks+1):
     nout_data_shape = new_images[nout_image].shape
     fout[nout_block] = h5py.File(args['out_file']+"_"+str(nout_block).zfill(6)+".h5",'w')
     fout[nout_block].create_group('entry')
-    fout[nout_block]['entry'].attrs.create('NXclass','NXentry')
+    fout[nout_block]['entry'].attrs.create('NX_class','NXentry')
     fout[nout_block]['entry'].create_group('data')
-    fout[nout_block]['entry']['data'].attrs.create('NXclass','NXdata')
+    fout[nout_block]['entry']['data'].attrs.create('NX_class','NXdata')
     if args['compression']==None:
         fout[nout_block]['entry']['data'].create_dataset('data',
             shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
