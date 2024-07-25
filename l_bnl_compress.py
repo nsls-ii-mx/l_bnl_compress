@@ -36,6 +36,8 @@ options:
                         an integer image summing range (1 ...) to apply to the selected images
   -v, --verbose         provide addtional information
 
+  -V, --version         report the version and build_date
+
 '''
 
 import sys
@@ -53,6 +55,14 @@ import tempfile
 import numcodecs
 from astropy.io.fits.hdu.compressed._codecs import HCompress1
 
+version = "1.0.1"
+version_date = "23Jul24"
+
+def ntstr(str):
+    return str+0x00
+
+def ntstrdt(str):
+    return h5py.string_dtype(encoding='utf-8',len(str)+1))
 
 def conv_pixel_mask(old_mask,bin_range):
     ''' conv_pixel_mask -- returns a new pixel_mask
@@ -181,6 +191,8 @@ parser.add_argument('-s','--sum', dest='sum_range', type=int,
    help= 'an integer image summing range (1 ...) to apply to the selected images')
 parser.add_argument('-v','--verbose',dest='verbose',action='store_true', 
    help= 'provide addtional information')
+parser.add_argument('-V','--version',dest='report_version',action='store_true',
+   help= 'report version and version_date')
 args = vars(parser.parse_args())
 
 #h5py._hl.filters._COMP_FILTERS['blosc']    =32001
@@ -196,9 +208,12 @@ args = vars(parser.parse_args())
 #h5py._hl.filters._COMP_FILTERS['j2k']      =32029
 #h5py._hl.filters._COMP_FILTERS['hcomp']    =32030
 
+if args['report_version'] == True:
+    print('l_bnl_compress-'+version+'-'+version_date)
+
 if args['verbose'] == True:
-     print(args)
-     print(h5py._hl.filters._COMP_FILTERS)
+    print(args)
+    #print(h5py._hl.filters._COMP_FILTERS)
 
 try:
     fin = h5py.File(args['infile'], 'r')
@@ -240,6 +255,15 @@ try:
 except:
     print('l_bnl_compress.py: detector/bit_depth_image not found')
     bit_depth_image='unknown'
+
+try:
+    bit_depth_readout=detector['bit_depth_readout']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: detector/bit_depth_readout: ', bit_depth_readout)
+        print('                 detector/bit_depth_readout[()]: ', bit_depth_readout[()])
+except:
+    print('l_bnl_compress.py: detector/bit_depth_readout not found')
+    bit_depth_readout = None
 
 try:
     thickness=detector['sensor_thickness']
@@ -289,6 +313,15 @@ except:
     print('l_bnl_compress.py: detector/count_time not found')
     fin.close()
     sys.exit(-1)
+
+try:
+    countrate_correction_applied=detector['countrate_correction_applied']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: detector/countrate_correction_applied: ', countrate_correction_applied)
+        print('                 detector/countrate_correction_applied[()]: ', countrate_correction_applied[()])
+except:
+    print('l_bnl_compress.py: detector/countrate_correction_applied not found')
+    countrate_correction_applied=None
 
 try:
     distance=detector['distance']
@@ -430,49 +463,68 @@ except:
             print('l_bnl_sinsum.py: ...count_cutoff not found, using 32765')
             satval=32765
 
-dS_pixel_mask=None
+dS_pixel_mask = None
 try:
     dS_pixel_mask=detectorSpecific['pixel_mask']
     if args['verbose'] == True:
         print('l_bnl_compress.py: detectorSpecific/pixel_mask: ', dS_pixel_mask)
-        print('                 detectorSpecific/pixel_mask[()]: ', dS_pixel_mask[()])
+        print('                   detectorSpecific/pixel_mask[()]: ', dS_pixel_mask[()])
 except:
     print('l_bnl_compress.py: detectorSpecific/pixel_mask not found')
     dS_pixel_mask=None
 
+best_wavelength = None
 try:
-    wavelength=fin['entry']['sample']['beam']['incident_wavelength']
+    sample_wavelength=fin['entry']['sample']['beam']['incident_wavelength']
+    if best_wavelength == None:
+        best_wavelength = sample_wavelength
     if args['verbose'] == True:
-        print('l_bnl_compress.py: entry/sample/beam/incident_wavelength: ', wavelength)
-        print('                 entry/sample/beam/incident_wavelength[()]: ', wavelength[()])
+        print('l_bnl_compress.py: entry/sample/beam/incident_wavelength: ', sample_wavelength)
+        print('                   entry/sample/beam/incident_wavelength[()]: ', sample_wavelength[()])
 except:
     if args['verbose'] == True:
         print('l_bnl_compress.py: entry/sample/beam/incident_wavelength not found')
-    try:
-        wavelength=fin['entry']['instrument']['beam']['wavelength']
-        if args['verbose'] == True:
-            print('l_bnl_compress.py: entry/instrument/beam/wavelength: ', wavelength)
-            print('                 entry/instrument/beam/wavelength[()]: ', wavelength[()])
-    except:
-        if args['verbose'] == True:
-            print('l_bnl_compress.py: entry/instument/beam/wavelength not found')
-        try:
-            wavelength=fin['entry']['instrument']['monochromater']['wavelength']
-            if args['verbose'] == True:
-                print('l_bnl_compress.py: entry/instrument/monochromater/wavelength: ', wavelength)
-                print('                 entry/instrument/monochromater/wavelength[()]: ', wavelength[()])
-        except:
-            if args['verbose'] == True:
-                print('l_bnl_compress.py: entry/instument/monochromater/wavelength not found')
-            try:
-                wavelength=fin['entry']['instrument']['beam']['incident_wavelength']
-                if args['verbose'] == True:
-                    print('l_bnl_compress.py: entry/instrument/beam/incident_wavelength: ', wavelength)
-                    print('                 entry/instrument/beam/incident_wavelength[()]: ', wavelength[()])
-            except:
-                print('l_bnl_compress.py: ...wavelength not found')
-                fin.close()
-                sys.exit(-1)
+    sample_wavelength = None
+
+try:
+    instrument_wavelength=fin['entry']['instrument']['beam']['wavelength']
+    if best_wavelength == None:
+        best_wavelength = instrument_wavelength
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/instrument/beam/wavelength: ', instrument_wavelength)
+        print('                   entry/instrument/beam/wavelength[()]: ', instrument_wavelength[()])
+except:
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/instrument/beam/wavelength not found')
+    instrument_wavelength = None
+
+try:
+    monochromater_wavelength=fin['entry']['instrument']['monochromater']['wavelength']
+    if best_wavelength == None:
+        best_wavelength = monochromater_wavelength
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/instrument/monochromater/wavelength: ', monochromater_wavelength)
+        print('                   entry/instrument/monochromater/wavelength[()]: ', monochromater_wavelength[()])
+except:
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/instrument/monochromater/wavelength not found')
+    monochromater_wavelength=None
+
+try:
+    beam_incident_wavelength=fin['entry']['instrument']['beam']['incident_wavelength']
+    if best_wavelength == None:
+        best_wavelength = beam_incident_wavelength
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/instrument/beam/incident_wavelength: ', beam_incident_wavelength)
+        print('                 entry/instrument/beam/incident_wavelength[()]: ', beam_incident_wavelength[()])
+except:
+    print('l_bnl_compress.py:entry/instrument/beam/incident_wavelength not found')
+    beam_incident_wavelength = None
+
+if best_wavelength==None:
+    print('l_bnl_compress.py: ... wavelength not found')
+    fin.close()
+    sys.exit(-1)
 
 try:
     osc_width=fin['entry']['sample']['goniometer']['omega_range_average']
@@ -500,6 +552,36 @@ try:
         print('l_bnl_compress.py: entry/sample/omega[()]: ', angles[()])
 except:
    print('l_bnl_compress.py: entry/sample/gonimeter/omega not found')
+   angles=None
+
+try:
+    phi=fin['entry']['sample']['goniometer']['phi']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/phi: ', phi)
+        print('l_bnl_compress.py: entry/sample/phi[()]: ', phi[()])
+except:
+   print('l_bnl_compress.py: entry/sample/gonimeter/phi not found')
+   phi=None
+
+
+try:
+    chi=fin['entry']['sample']['goniometer']['chi']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/chi: ', chi)
+        print('l_bnl_compress.py: entry/sample/chi[()]: ', chi[()])
+except:
+   print('l_bnl_compress.py: entry/sample/gonimeter/chi not found')
+   chi=None
+
+
+try:
+    kappa=fin['entry']['sample']['goniometer']['kappa']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/kappa: ', kappa)
+        print('l_bnl_compress.py: entry/sample/kappa[()]: ', kappa[()])
+except:
+   print('l_bnl_compress.py: entry/sample/gonimeter/kappa not found')
+   kappa=None
 
 
 try:
@@ -540,7 +622,7 @@ if (args['sum_range'] == None) or (args['sum_range']  < 2):
 if (args['bin_range'] == None) or (args['bin_range'] < 2):
     args['bin_range'] = 1
 
-new_image = 0
+new_nimage = 0
 new_images = {}
 
 for image in range(args['first_image'],(args['last_image'])+1,args['sum_range']):
@@ -563,18 +645,18 @@ for image in range(args['first_image'],(args['last_image'])+1,args['sum_range'])
             prev_out = np.clip(prev_out+cur_source,0,satval)
         else:
             prev_out = (np.asarray(cur_source,dtype='i2')).clip(0,satval)
-    new_image = new_image+1
-    new_images[new_image]=prev_out
+    new_nimage = new_nimage+1
+    new_images[new_nimage]=prev_out
 
 if args['verbose'] == True:
-    print('new_image: ', new_image)
+    print('new_nimage: ', new_nimage)
     print('cur_source: ',cur_source)
     print('cur_source.shape: ', cur_source.shape)
 if (args['data_block_size'] == None) or (args['data_block_size'] < 2):
     args['data_block_size'] = 1
 out_number_per_block = args['data_block_size']
-out_number_of_blocks = int(new_image+out_number_per_block-1)//out_number_per_block
-out_max_image=new_image
+out_number_of_blocks = int(new_nimage+out_number_per_block-1)//out_number_per_block
+out_max_image=new_nimage
 if args['verbose'] == True:
     print('out_number_per_block: ', out_number_per_block)
     print('out_number_of_blocks: ', out_number_of_blocks)
@@ -585,22 +667,22 @@ master=0
 if args['out_master']==None:
     args['out_master']=args['out_file']+"_master"
 fout[master] = h5py.File(args['out_master']+".h5",'w')
+fout[master].attrs.create('default',ntstr('entry'),dtype=ntstrdt('entry'))
 fout[master].create_group('entry') 
-fout[master]['entry'].attrs.create('NX_class','NXentry')
+fout[master]['entry'].attrs.create('NX_class',ntstr('NXentry'),dtype=ntstrdt('NXentry'))
+fout[master]['entry'].attrs.create('default',ntstr('data'),dtype=ntstrdt('data'))
 fout[master]['entry'].create_group('data') 
-fout[master]['entry']['data'].attrs.create('NX_class','NXdata') 
+fout[master]['entry']['data'].attrs.create('NX_class',ntstr('NXdata'),dtype=ntstrdt('NXdata'))) 
 fout[master]['entry'].create_group('instrument') 
-fout[master]['entry']['instrument'].attrs.create('NX_class','NXinstrument') 
+fout[master]['entry']['instrument'].attrs.create('NX_class',ntstr('NXinstrument'),dtype=ntstrdt('NXinstrument'))
 fout[master]['entry'].create_group('sample') 
-fout[master]['entry']['sample'].attrs.create('NX_class','NXsample') 
-fout[master]['entry']['sample'].create_group('beam') 
-fout[master]['entry']['sample']['beam'].attrs.create('NX_class','NXbeam') 
+fout[master]['entry']['sample'].attrs.create('NX_class',ntstr('NXsample'),dtype=ntstrdt('NXsample')) 
 fout[master]['entry']['sample'].create_group('goniometer') 
-fout[master]['entry']['sample']['goniometer'].attrs.create('NX_class','NXgoniometer') 
-fout[master]['entry']['instrument'].attrs.create('NX_class','NXinstrument')
+fout[master]['entry']['sample']['goniometer'].attrs.create('NX_class',ntstr('NXgoniometer'),dtype=ntstrdt('NXgoniometer')) 
+fout[master]['entry']['instrument'].attrs.create('NX_class',ntstr('NXinstrument'),dtype=ntstrdt('NXinstrument'))
 fout[master]['entry']['instrument'].create_group('detector')
 fout[master]['entry']['instrument']['detector'].attrs.create(\
-    'NX_class','NXdetector')
+    'NX_class',ntstr('NXdetector'),dtype=ntstrdt('NXdetector'))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'description',shape=description.shape,dtype=description.dtype)
 fout[master]['entry']['instrument']['detector']['description'][()]=\
@@ -609,58 +691,73 @@ fout[master]['entry']['instrument']['detector'].create_dataset(\
     'detector_number',shape=detector_number.shape,dtype=detector_number.dtype)
 fout[master]['entry']['instrument']['detector']['detector_number'][()]=\
     detector_number[()]
-fout[master]['entry']['instrument']['detector'].create_dataset(\
-    'bit_depth_image',shape=bit_depth_image.shape,dtype=bit_depth_image.dtype)
-fout[master]['entry']['instrument']['detector']['bit_depth_image'][()]=\
-    bit_depth_image[()]
+if bit_depth_image != None:
+    fout[master]['entry']['instrument']['detector'].create_dataset(\
+        'bit_depth_image',shape=bit_depth_image.shape,dtype='u4')
+    fout[master]['entry']['instrument']['detector']['bit_depth_image'][()]=\
+        16
+    fout[master]['entry']['instrument']['detector']['bit_depth_image'].attrs.create(\
+        'units',ntstr('NX_UINT32'),dtype=dtntstr('NX_UINT32'))
+if bit_depth_readout != None:
+    fout[master]['entry']['instrument']['detector'].create_dataset(\
+        'bit_depth_readout',shape=bit_depth_readout.shape,dtype=bit_depth_readout.dtype)
+    fout[master]['entry']['instrument']['detector']['bit_depth_readout'][()]=\
+        bit_depth_readout[()]
+    fout[master]['entry']['instrument']['detector']['bit_depth_readout'].attrs.create(\
+        'units',ntstr('NX_UINT32'),dtype=dtntstr('NX_UINT32'))
+if countrate_correction_applied != None:
+    fout[master]['entry']['instrument']['detector'].create_dataset(\
+        'countrate_correction_applied',shape=countrate_correction_applied.shape,dtype=countrate_correction_applied.dtype)
+    fout[master]['entry']['instrument']['detector']['bit_depth_image'][()]=\
+        countrate_correction_applied[()]
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'sensor_thickness',shape=thickness.shape,dtype=thickness.dtype)
 fout[master]['entry']['instrument']['detector']['sensor_thickness'][()]=\
     thickness[()]
 fout[master]['entry']['instrument']['detector']['sensor_thickness'].attrs.create(\
-    'units',thickness.attrs['units'])
+    'units',ntstr(thickness.attrs['units']),dtype=ntstrdt(thickness.attrs['units']))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'beam_center_x',shape=beamx.shape,dtype=beamx.dtype)
 fout[master]['entry']['instrument']['detector']['beam_center_x'][()]=\
     beamx[()]/int(args['bin_range'])
 fout[master]['entry']['instrument']['detector']['beam_center_x'].attrs.create(\
-    'units',beamx.attrs['units'])
+    'units',ntstr(beamx.attrs['units']),dtype=ntstrdt(beamx.attrs['units']))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'beam_center_y',shape=beamy.shape,dtype=beamy.dtype)
 fout[master]['entry']['instrument']['detector']['beam_center_y'][()]\
     =beamy[()]/int(args['bin_range'])
 fout[master]['entry']['instrument']['detector']['beam_center_y'].attrs.create(\
-   'units',beamy.attrs['units'])
+   'units',ntstr(beamy.attrs['units']),dtype=ntstrdt(beamy.attrs['units']))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'count_time',shape=count_time.shape,dtype=count_time.dtype)
 fout[master]['entry']['instrument']['detector']['count_time'][()]=\
     count_time[()]*int(args['sum_range'])
 fout[master]['entry']['instrument']['detector']['count_time'].attrs.create(\
-    'units',count_time.attrs['units'])
+    'units',ntstr(count_time.attrs['units']),dtype=ntstrdt(count_time.attrs['units'])
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'detector_distance',shape=distance.shape,dtype=distance.dtype)
 fout[master]['entry']['instrument']['detector']['detector_distance'][()]=\
     distance[()]
 fout[master]['entry']['instrument']['detector']['detector_distance'].attrs.create(\
-    'units',distance.attrs['units'])
+    'units',ntstr(distance.attrs['units']),dtype=ntstrdt(distance.attrs['units']))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'frame_time',shape=frame_time.shape,dtype=frame_time.dtype)
 fout[master]['entry']['instrument']['detector']['frame_time'][()]=\
     frame_time[()]*int(args['sum_range'])
 fout[master]['entry']['instrument']['detector']['frame_time'].attrs.create(\
-    'units',frame_time.attrs['units'])
+    'units',ntstr(frame_time.attrs['units']),dtype=ntstrdt(frame_time.attrs['units']))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'x_pixel_size',shape=pixelsizex.shape,dtype=pixelsizex.dtype)
 fout[master]['entry']['instrument']['detector']['x_pixel_size'][()]=\
     pixelsizex[()]*int(args['sum_range'])
 fout[master]['entry']['instrument']['detector']['x_pixel_size'].attrs.create(\
-    'units',pixelsizex.attrs['units'])
+    'units',ntstr(pixelsizex.attrs['units']),dtype=ntstrdt(pixelsizex.attrs['units']))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'y_pixel_size',shape=pixelsizey.shape,dtype=pixelsizey.dtype)
 fout[master]['entry']['instrument']['detector']['y_pixel_size'][()]=\
     pixelsizey[()]*int(args['sum_range'])
 fout[master]['entry']['instrument']['detector']['y_pixel_size'].attrs.create(\
-    'units',pixelsizey.attrs['units'])
+    'units',ntstr(pixelsizey.attrs['units']),dtype=ntstrdt(pixelsizey.attrs['units']))
 if pixel_mask!=None:
     new_pixel_mask=conv_pixel_mask(pixel_mask,int(args['bin_range']))
     fout[master]['entry']['instrument']['detector'].create_dataset(\
@@ -674,11 +771,11 @@ new_shape=conv_image_shqpe((int(ypixels[()]),int(xpixels[()])),int(args['bin_ran
 fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
     'nimages',shape=xnimages.shape,dtype=xnimages.dtype)
 fout[master]['entry']['instrument']['detector']['detectorSpecific']['nimages'][()]\
-    =new_image
+    =new_nimage
 fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
     'ntrigger',shape=xntrigger.shape,dtype=xntrigger.dtype)
 fout[master]['entry']['instrument']['detector']['detectorSpecific']['ntrigger'][()]=\
-    new_image
+    new_nimage
 fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
     'x_pixels_in_detector',shape=xpixels.shape,dtype=xpixels.dtype)
 fout[master]['entry']['instrument']['detector']['detectorSpecific'][\
@@ -699,39 +796,89 @@ if dS_pixel_mask!=None:
     new_pixel_mask=conv_pixel_mask(dS_pixel_mask,int(args['bin_range']))
     fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
         'pixel_mask',shape=new_pixel_mask.shape,dtype='u4',\
-        data=new_pixel_mask,\
+        data=new_pixel_mask,chunks=None,\
         **hdf5plugin.Bitshuffle(nelems=0,cname='lz4'))
     del new_pixel_mask
-fout[master]['entry']['sample']['beam'].create_dataset(\
-    'incident_wavelength',shape=wavelength.shape,dtype=wavelength.dtype)
-fout[master]['entry']['sample']['beam']['incident_wavelength'][()]=\
-    wavelength[()]
-fout[master]['entry']['sample']['beam']['incident_wavelength'].attrs.create(\
-    'units',wavelength.attrs['units'])
+elif pixel_mask!=None:
+    new_pixel_mask=conv_pixel_mask(pixel_mask,int(args['bin_range']))
+    fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
+        'pixel_mask',shape=pixel_mask.shape,dtype='u4',\
+        data=new_pixel_mask,chunks=None,\
+        **hdf5plugin.Bitshuffle(nelems=0,cname='lz4'))
+    del new_pixel_mask
+
+if sample_wavelength!=None:
+    if not ('beam' in fout[master]['entry']['sample'].keys()):
+        fout[master]['entry']['sample'].create_group('beam') 
+        fout[master]['entry']['sample']['beam'].attrs.create('NX_class',ntstr('NXbeam'),dtype=ntstrdt('NXbeam'))
+    if not ('incident_wavelength' in  fout[master]['entry']['sample']['beam'].keys()): 
+        fout[master]['entry']['sample']['beam'].create_dataset(\
+        'incident_wavelength',shape=sample_wavelength.shape,dtype=sample_wavelength.dtype)
+    fout[master]['entry']['sample']['beam']['incident_wavelength'][()]=sample_wavelength[()]
+if instrument_wavelength!=None:
+    if not ('beam' in fout[master]['entry']['instrument'].keys()):
+        fout[master]['entry']['instrument'].create_group('beam')
+        fout[master]['entry']['instrument']['beam'].attrs.create('NX_class',ntstr('NXbeam'),dtype=ntstrdt('NXbeam'))
+    if not ('wavelength' in fout[master]['entry']['instrument']['beam'].keys()):
+        fout[master]['entry']['instrument']['beam'].create_dataset(\
+        'wavelength',shape=instrument_wavelength.shape,dtype=instrument_wavelength.dtype)
+    fout[master]['entry']['instrument']['beam']['wavelength'][()]=instrument_wavelength[()]
+if monochromater_wavelength!=None:
+    if not ('monochromater' in fout[master]['entry']['instrument'].keys()):
+        fout[master]['entry']['instrument'].create_group('monochromater')
+        fout[master]['entry']['instrument']['monochromater'].attrs.create('NX_class',ntstr('NXmonochromater'),dtype=ntstrdt('NXmonochromater'))
+    if not ('wavelength' in fout[master]['entry']['instrument']['monochromater'].keys()):
+        fout[master]['entry']['instrument']['monochromater'].create_dataset(\
+        'wavelength',shape=monochromater_wavelength.shape,dtype=monochromater_wavelength.dtype)
+    fout[master]['entry']['instrument']['monochromater']['wavelength'][()]=monochromater_wavelength[()]
+if beam_incident_wavelength!=None:
+    if not ('beam' in fout[master]['entry']['instrument'].keys()):
+        fout[master]['entry']['instrument'].create_group('beam')
+        fout[master]['entry']['instrument']['beam'].attrs.create('NX_class',ntstr('NXbeam'),dtype=ntstrdt('NXbeam'))
+    if not ('incident_wavelength' in fout[master]['entry']['instrument']['beam'].keys()):
+        fout[master]['entry']['instrument']['beam'].create_dataset(\
+        'incident_wavelength',shape=beam_incident_wavelength.shape,dtype=beam_incident_wavelength.dtype)
+    fout[master]['entry']['instrument']['beam']['incident_wavelength'][()]=beam_incident_wavelength[()]
+
 fout[master]['entry']['sample']['goniometer'].create_dataset(\
     'omega_range_average',shape=osc_width.shape,dtype=osc_width.dtype)
 fout[master]['entry']['sample']['goniometer']['omega_range_average'][()]=\
     osc_width[()]*int(args['sum_range'])
 fout[master]['entry']['sample']['goniometer']['omega_range_average'].attrs.create(\
-    'units',osc_width.attrs['units'])
+    'units',ntstr(osc_width.attrs['units']),dtype=ntstrdt(osc_width.attrs['units']))
 fout[master]['entry']['sample']['goniometer'].create_dataset(\
     'omega',shape=angles.shape,dtype=angles.dtype) 
 fout[master]['entry']['sample']['goniometer']['omega'][0:(int(args['last_image'])-\
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     angles[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
-
+fout[master]['entry']['sample']['goniometer']['omega_end'] = \
+    fout[master]['entry']['sample']['goniometer']['omega']+osc_width[()]*int(args['sum_range'])
+if phi != None:
+    fout[master]['entry']['sample']['goniometer'].create_dataset(\
+    'phi',shape=phi.shape,dtype=phi.dtype)
+    fout[master]['entry']['sample']['goniometer']['phi'][()]=phi[()]
+if chi != None:
+    fout[master]['entry']['sample']['goniometer'].create_dataset(\
+    'chi',shape=chi.shape,dtype=chi.dtype)
+    fout[master]['entry']['sample']['goniometer']['phi'][()]=chi[()]
+if kappa != None:
+    fout[master]['entry']['sample']['goniometer'].create_dataset(\
+    'kappa',shape=kappa.shape,dtype=kappa.dtype)
+    fout[master]['entry']['sample']['goniometer']['phi'][()]=kappa[()]
 
 for nout_block in range(1,out_number_of_blocks+1):
     nout_image=1+(nout_block-1)*out_number_per_block
+    image_nr_low=nout_image
     lim_nout_image = nout_image+out_number_per_block
     if lim_nout_image > out_max_image+1:
         lim_nout_image = out_max_image+1
+    image_nr_high = lim_nout_image-1
     nout_data_shape = new_images[nout_image].shape
     fout[nout_block] = h5py.File(args['out_file']+"_"+str(nout_block).zfill(6)+".h5",'w')
     fout[nout_block].create_group('entry')
-    fout[nout_block]['entry'].attrs.create('NX_class','NXentry')
+    fout[nout_block]['entry'].attrs.create('NX_class',ntstr('NXentry'),dtype=ntstrdt('NXentry'))
     fout[nout_block]['entry'].create_group('data')
-    fout[nout_block]['entry']['data'].attrs.create('NX_class','NXdata')
+    fout[nout_block]['entry']['data'].attrs.create('NX_class',ntstr('NXdata'),dtype=ntstrdt('NXdata'))
     if args['compression']==None:
         fout[nout_block]['entry']['data'].create_dataset('data',
             shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
@@ -763,6 +910,10 @@ for nout_block in range(1,out_number_of_blocks+1):
             maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
             dtype='u2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
             **hdf5plugin.Bitshuffle(nelems=0,cname='zstd',clevel=clevel))
+    fout[nout_block]['entry']['data']['data'].attrs.create('image_nr_low',dtype=np.uint64,
+        data=np.uint64(image_nr_low))
+    fout[nout_block]['entry']['data']['data'].attrs.create('image_nr_high',dtype=np.uint64,
+        data=np.uint64(image_nr_high))
     print("fout[nout_block]['entry']['data']['data']: ",fout[nout_block]['entry']['data']['data'])
     for out_image in range(nout_image,lim_nout_image):
         if args['hcomp_scale']==None and args['j2k_target_compression_ratio']==None: 
@@ -779,7 +930,6 @@ for nout_block in range(1,out_number_of_blocks+1):
             hdecomp_data=hcomp.decode(np.frombuffer(hcomp_data,dtype=np.uint8))
             decompressed_data = hdecomp_data.astype('i4').reshape((nout_data_shape[0],nout_data_shape[1]))
             decompressed_data = np.clip(decompressed_data,0,satval)
-            print('decompressed_data: ',decompressed_data)
             fout[nout_block]['entry']['data']['data'][out_image-nout_image, \
                 0:nout_data_shape[0],0:nout_data_shape[1]] \
                 = np.asarray(decompressed_data,dtype='u2')
@@ -791,15 +941,12 @@ for nout_block in range(1,out_number_of_blocks+1):
             mycrat=int(args['j2k_target_compression_ratio'])
             if mycrat < 1:
                 mycrat=125
-            print("mycrat: ",mycrat)
             img16=new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]].astype('u2')
             outtemp=args['out_file']+"_"+str(out_image).zfill(6)+".j2k"
             print("outtemp: ",outtemp)
             j2k=glymur.Jp2k(outtemp, data=img16, cratios=[mycrat])
             jdecomped = j2k[:]
-            print("jdecompd: ",jdecomped)
             arr_final = np.array(jdecomped, dtype='u2')
-            print("arr_final: ",arr_final)
             fout[nout_block]['entry']['data']['data'][out_image-nout_image, \
                 0:nout_data_shape[0],0:nout_data_shape[1]] \
                 = np.clip(arr_final,0,satval)
