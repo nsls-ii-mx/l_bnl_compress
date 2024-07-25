@@ -58,11 +58,11 @@ from astropy.io.fits.hdu.compressed._codecs import HCompress1
 version = "1.0.1"
 version_date = "23Jul24"
 
-def ntstr(str):
-    return str+0x00
+def ntstr(xstr):
+    return str(xstr)+('0x00')
 
 def ntstrdt(str):
-    return h5py.string_dtype(encoding='utf-8',len(str)+1))
+    return h5py.string_dtype(encoding='utf-8',length=len(str)+1)
 
 def conv_pixel_mask(old_mask,bin_range):
     ''' conv_pixel_mask -- returns a new pixel_mask
@@ -672,7 +672,7 @@ fout[master].create_group('entry')
 fout[master]['entry'].attrs.create('NX_class',ntstr('NXentry'),dtype=ntstrdt('NXentry'))
 fout[master]['entry'].attrs.create('default',ntstr('data'),dtype=ntstrdt('data'))
 fout[master]['entry'].create_group('data') 
-fout[master]['entry']['data'].attrs.create('NX_class',ntstr('NXdata'),dtype=ntstrdt('NXdata'))) 
+fout[master]['entry']['data'].attrs.create('NX_class',ntstr('NXdata'),dtype=ntstrdt('NXdata')) 
 fout[master]['entry'].create_group('instrument') 
 fout[master]['entry']['instrument'].attrs.create('NX_class',ntstr('NXinstrument'),dtype=ntstrdt('NXinstrument'))
 fout[master]['entry'].create_group('sample') 
@@ -697,14 +697,14 @@ if bit_depth_image != None:
     fout[master]['entry']['instrument']['detector']['bit_depth_image'][()]=\
         16
     fout[master]['entry']['instrument']['detector']['bit_depth_image'].attrs.create(\
-        'units',ntstr('NX_UINT32'),dtype=dtntstr('NX_UINT32'))
+        'units',ntstr('NX_UINT32'),dtype=ntstrdt('NX_UINT32'))
 if bit_depth_readout != None:
     fout[master]['entry']['instrument']['detector'].create_dataset(\
         'bit_depth_readout',shape=bit_depth_readout.shape,dtype=bit_depth_readout.dtype)
     fout[master]['entry']['instrument']['detector']['bit_depth_readout'][()]=\
         bit_depth_readout[()]
     fout[master]['entry']['instrument']['detector']['bit_depth_readout'].attrs.create(\
-        'units',ntstr('NX_UINT32'),dtype=dtntstr('NX_UINT32'))
+        'units',ntstr('NX_UINT32'),dtype=ntstrdt('NX_UINT32'))
 if countrate_correction_applied != None:
     fout[master]['entry']['instrument']['detector'].create_dataset(\
         'countrate_correction_applied',shape=countrate_correction_applied.shape,dtype=countrate_correction_applied.dtype)
@@ -733,7 +733,7 @@ fout[master]['entry']['instrument']['detector'].create_dataset(\
 fout[master]['entry']['instrument']['detector']['count_time'][()]=\
     count_time[()]*int(args['sum_range'])
 fout[master]['entry']['instrument']['detector']['count_time'].attrs.create(\
-    'units',ntstr(count_time.attrs['units']),dtype=ntstrdt(count_time.attrs['units'])
+    'units',ntstr(count_time.attrs['units']),dtype=ntstrdt(count_time.attrs['units']))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'detector_distance',shape=distance.shape,dtype=distance.dtype)
 fout[master]['entry']['instrument']['detector']['detector_distance'][()]=\
