@@ -48,21 +48,21 @@ import skimage as ski
 import h5py
 import tifffile
 from astropy.io import fits
-from io import BytesIO
 import glymur
 import hdf5plugin
 import tempfile
 import numcodecs
 from astropy.io.fits.hdu.compressed._codecs import HCompress1
 
-version = "1.0.1"
-version_date = "23Jul24"
+version = "1.1.0"
+version_date = "27Jul24"
+xnt=int(1)
 
 def ntstr(xstr):
-    return str(xstr)+('0x00')
+    return str(xstr)
 
 def ntstrdt(str):
-    return h5py.string_dtype(encoding='utf-8',length=len(str)+1)
+    return h5py.string_dtype(encoding='utf-8',length=len(str)+xnt)
 
 def conv_pixel_mask(old_mask,bin_range):
     ''' conv_pixel_mask -- returns a new pixel_mask
@@ -222,45 +222,54 @@ except:
     sys.exit(-1)
 
 try:
+    top_definition=fin['entry']['definition']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/definition: ', top_definition)
+        print('                   entry/definition[()]: ', top_definition[()])
+except:
+    print('l_bnl_compress.py: entry/definition not found')
+    top_definition = None
+
+try:
     detector=fin['entry']['instrument']['detector']
     if args['verbose'] == True:
         print('l_bnl_compress.py: detector: ', detector)
 except:
     print('l_bnl_compress.py: detector not found')
-    detector='unknown'
+    detector = None
 
 try:
     description=detector['description']
     if args['verbose'] == True:
         print('l_bnl_compress.py: detector/description: ', description)
-        print('                 detector/description[()]: ', description[()])
+        print('                   detector/description[()]: ', description[()])
 except:
     print('l_bnl_compress.py: detector/description not found')
-    description='unknown'
+    description = None
 
 try:
     detector_number=detector['detector_number']
     if args['verbose'] == True:
         print('l_bnl_compress.py: detector_number: ', detector_number)
-        print('                 detector_number[()]: ', detector_number[()])
+        print('                   detector_number[()]: ', detector_number[()])
 except:
     print('l_bnl_compress.py: detector/detector_number not found')
-    detector_number='unknown'
+    detector_number=None
 
 try:
     bit_depth_image=detector['bit_depth_image']
     if args['verbose'] == True:
         print('l_bnl_compress.py: detector/bit_depth_image: ', bit_depth_image)
-        print('                 detector/bit_depth_image[()]: ', bit_depth_image[()])
+        print('                   detector/bit_depth_image[()]: ', bit_depth_image[()])
 except:
     print('l_bnl_compress.py: detector/bit_depth_image not found')
-    bit_depth_image='unknown'
+    bit_depth_image=None
 
 try:
     bit_depth_readout=detector['bit_depth_readout']
     if args['verbose'] == True:
         print('l_bnl_compress.py: detector/bit_depth_readout: ', bit_depth_readout)
-        print('                 detector/bit_depth_readout[()]: ', bit_depth_readout[()])
+        print('                   detector/bit_depth_readout[()]: ', bit_depth_readout[()])
 except:
     print('l_bnl_compress.py: detector/bit_depth_readout not found')
     bit_depth_readout = None
@@ -269,7 +278,7 @@ try:
     thickness=detector['sensor_thickness']
     if args['verbose'] == True:
         print('l_bnl_compress.py: detector/sensor_thickness: ', thickness)
-        print('                 detector/sensor_thickness[()]: ', thickness[()])
+        print('                   detector/sensor_thickness[()]: ', thickness[()])
 except:
     print('l_bnl_compress.py: detector/sensor_thickness not found')
     thickness='unknown'
@@ -351,6 +360,19 @@ except:
     fin.close()
     sys.exit(-1)
 
+satval = 32767
+satval_not_found = True
+try:
+    saturation_value = detector['saturation_value']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: detector/saturation_value: ', saturation_value)
+        print('                   detector/saturation_value[()]: ', saturation_value[()])
+    satval = saturation_value[()]
+    satval_not_found = False 
+except:
+    print('l_bnl_compress.py: detector/saturation_value not found')
+    saturation_value = None
+
 try:
     pixelsizex=detector['x_pixel_size']
     if args['verbose'] == True:
@@ -431,37 +453,44 @@ except:
     sys.exit(-1)
 
 try:
-    countrate_cutoff=detectorSpecific['saturation_value']
-    satval=countrate_cutoff[()]
+    countrate_correction_count_cutoff = detectorSpecific['countrate_correction_count_cutoff']
     if args['verbose'] == True:
-        print('l_bnl_compress.py: detectorSpecific/saturation_value: ', countrate_cutoff)
-        print('                 detectorSpecific/saturation_value[()]: ', countrate_cutoff[()])
+        print('l_bnl_compress.py: detectorSpecific/countrate_correction_count_cutoff: ', countrate_correction_count_cutoff)
+        print('                   detectorSpecific/countrate_correction_count_cutoff[()]: ', countrate_correction_count_cutoff[()])
+    if satval_not_found:
+        satval = countrate_correction_count_cutoff[()]
+        satval_not_found = False 
+
 except:
+    print('l_bnl_compress.py: detectorSpecific/countrate_correction_count_cutoff not found')
+    countrate_correction_count_cutoff = None
+
+try:
+    dS_saturation_value = detectorSpecific['saturation_value']
     if args['verbose'] == True:
-        print('l_bnl_compress.py: detectorSpecific/saturation_value not found')
-    try:
-        countrate_cutoff=detectorSpecific['countrate_correction_count_cutoff']
-        satval=countrate_cutoff[()]+1
-        if args['verbose'] == True:
-            print('l_bnl_compress.py: detectorSpecific/countrate_correction_count_cutoff: ',
-                countrate_cutoff)
-            print('                 detectorSpecific/countrate_correction_count_cutoff[()]: ',
-                countrate_cutoff[()])
-    except:
-        if args['verbose'] == True:
-            print('l_bnl_compress.py: detectorSpecific/countrate_correction_count_cutoff not found')
-        try:
-            countrate_cutoff=detectorSpecific['detectorModule_000']['countrate_correction_count_cutoff']
-            satval=countrate_cutoff[()]+1
-            if args['verbose'] == True:
-                print('l_bnl_compress.py: detectorSpecific/detectorModule_000/countrate_correction_count_cutoff: ',
-                    countrate_cutoff)
-                print('                 detectorSpecific/detectorModule_000countrate_correction_count_cutoff[()]: ',
-                    countrate_cutoff[()])
-                print('                  *** use of this dataset is deprecated ***')
-        except:
-            print('l_bnl_sinsum.py: ...count_cutoff not found, using 32765')
-            satval=32765
+        print('l_bnl_compress.py: detectorSpecific/saturation_value: ', dS_saturation_value)
+        print('                   detectorSpecific/saturation_value[()]: ', dS_saturation_value[()])
+    if satval_not_found:
+        satval = dS_saturation_value[()]
+        satval_not_found = False 
+except:
+     print('l_bnl_compress.py: detectorSpecific/saturation_value not found')
+     dS_saturation_value = None  
+
+try:
+    mod0_countrate_cutoff = detectorSpecific['detectorModule_000']['countrate_correction_count_cutoff']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: detectorSpecific/detectorModule_000/countrate_correction_count_cutoff: ',mod0_countrate_cutoff)
+        print('                   detectorSpecific/detectorModule_000countrate_correction_count_cutoff[()]: ',  mod0_countrate_cutoff[()])
+        print('                  *** use of this dataset is deprecated ***')
+    if satval_not_found:
+        satval = mod0_countrate_cutoff[()]
+        satval_not_found = False
+except:
+    if satval_not_found:
+        print('l_bnl_compress.py: ...count_cutoff not found, using 32765')
+        satval=32765
+    mod0_countrate_cutoff = None
 
 dS_pixel_mask = None
 try:
@@ -536,6 +565,33 @@ except:
     fin.close()
     sys.exit(-1)
 
+try:
+    phi_range_average = fin['entry']['sample']['goniometer']['phi_range_average']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/goniometer/phi_range_average: ', phi_range_average)
+        print('                   entry/sample/goniometer/phi_range_average[()]: ', phi_range_average[()])
+except:
+    print('l_bnl_compress.py: entry/sample/goniometer/phi_range_average not found')
+    phi_range_average=None
+
+try:
+    chi_range_average = fin['entry']['sample']['goniometer']['chi_range_average']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/goniometer/chi_range_average: ', chi_range_average)
+        print('                   entry/sample/goniometer/chi_range_average[()]: ', chi_range_average[()])
+except:
+    print('l_bnl_compress.py: entry/sample/goniometer/chi_range_average not found')
+    chi_range_average=None
+
+try:
+    omega_range_average = fin['entry']['sample']['goniometer']['kappa_range_average']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/goniometer/kappa_range_average: ', kappa_range_average)
+        print('                   entry/sample/goniometer/kappa_range_average[()]: ', kappa_range_average[()])
+except:
+    print('l_bnl_compress.py: entry/sample/goniometer/kappa_range_average not found')
+    kappa_range_average=None
+
 nimages=xnimages[()]
 ntrigger=xntrigger[()]
 if args['verbose'] == True:
@@ -551,8 +607,17 @@ try:
         print('l_bnl_compress.py: entry/sample/omega: ', angles)
         print('l_bnl_compress.py: entry/sample/omega[()]: ', angles[()])
 except:
-   print('l_bnl_compress.py: entry/sample/gonimeter/omega not found')
-   angles=None
+    print('l_bnl_compress.py: entry/sample/gonimeter/omega not found')
+    angles=None
+
+try:
+    angles_end=fin['entry']['sample']['goniometer']['omega_end']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/omega_end: ', angles_end)
+        print('l_bnl_compress.py: entry/sample/omega_end[()]: ', angles_end[()])
+except:
+    print('l_bnl_compress.py: entry/sample/gonimeter/omega_end not found')
+    angles_end=None
 
 try:
     phi=fin['entry']['sample']['goniometer']['phi']
@@ -560,9 +625,17 @@ try:
         print('l_bnl_compress.py: entry/sample/phi: ', phi)
         print('l_bnl_compress.py: entry/sample/phi[()]: ', phi[()])
 except:
-   print('l_bnl_compress.py: entry/sample/gonimeter/phi not found')
-   phi=None
+    print('l_bnl_compress.py: entry/sample/gonimeter/phi not found')
+    phi=None
 
+try:
+    phi_end=fin['entry']['sample']['goniometer']['phi_end']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/phi_end: ', phi_end)
+        print('l_bnl_compress.py: entry/sample/phi_end[()]: ', phi_end[()])
+except:
+    print('l_bnl_compress.py: entry/sample/gonimeter/phi_end not found')
+    phi_end=None
 
 try:
     chi=fin['entry']['sample']['goniometer']['chi']
@@ -570,9 +643,17 @@ try:
         print('l_bnl_compress.py: entry/sample/chi: ', chi)
         print('l_bnl_compress.py: entry/sample/chi[()]: ', chi[()])
 except:
-   print('l_bnl_compress.py: entry/sample/gonimeter/chi not found')
-   chi=None
+    print('l_bnl_compress.py: entry/sample/gonimeter/chi not found')
+    chi=None
 
+try:
+    chi_end=fin['entry']['sample']['goniometer']['chi_end']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/chi_end: ', chi_end)
+        print('l_bnl_compress.py: entry/sample/chi_end[()]: ', chi_end[()])
+except:
+    print('l_bnl_compress.py: entry/sample/gonimeter/phi_end not found')
+    phi_end=None
 
 try:
     kappa=fin['entry']['sample']['goniometer']['kappa']
@@ -580,8 +661,17 @@ try:
         print('l_bnl_compress.py: entry/sample/kappa: ', kappa)
         print('l_bnl_compress.py: entry/sample/kappa[()]: ', kappa[()])
 except:
-   print('l_bnl_compress.py: entry/sample/gonimeter/kappa not found')
-   kappa=None
+    print('l_bnl_compress.py: entry/sample/gonimeter/kappa not found')
+    kappa=None
+
+try:
+    kappa_end=fin['entry']['sample']['goniometer']['kappa_end']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/kappa_end: ', kappa_end)
+        print('l_bnl_compress.py: entry/sample/kappa_end[()]: ', kappa_end[()])
+except:
+    print('l_bnl_compress.py: entry/sample/gonimeter/kappa_end not found')
+    kappa_end=None
 
 
 try:
@@ -672,7 +762,11 @@ fout[master].create_group('entry')
 fout[master]['entry'].attrs.create('NX_class',ntstr('NXentry'),dtype=ntstrdt('NXentry'))
 fout[master]['entry'].attrs.create('default',ntstr('data'),dtype=ntstrdt('data'))
 fout[master]['entry'].create_group('data') 
-fout[master]['entry']['data'].attrs.create('NX_class',ntstr('NXdata'),dtype=ntstrdt('NXdata')) 
+if top_definition != None:
+  fout[master]['entry'].create_dataset('definition',shape=top_definition.shape,dtype=top_definition.dtype)
+  fout[master]['entry']['definition'][()]=top_definition[()]
+  if 'version' in top_definition.attrs.keys():
+      fout[master]['entry']['definition'].attrs.create('version',top_definition.attrs['version'])
 fout[master]['entry'].create_group('instrument') 
 fout[master]['entry']['instrument'].attrs.create('NX_class',ntstr('NXinstrument'),dtype=ntstrdt('NXinstrument'))
 fout[master]['entry'].create_group('sample') 
@@ -695,7 +789,7 @@ if bit_depth_image != None:
     fout[master]['entry']['instrument']['detector'].create_dataset(\
         'bit_depth_image',shape=bit_depth_image.shape,dtype='u4')
     fout[master]['entry']['instrument']['detector']['bit_depth_image'][()]=\
-        16
+        np.uint32(16)
     fout[master]['entry']['instrument']['detector']['bit_depth_image'].attrs.create(\
         'units',ntstr('NX_UINT32'),dtype=ntstrdt('NX_UINT32'))
 if bit_depth_readout != None:
@@ -788,10 +882,29 @@ fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_datas
     'software_version',shape=software_version.shape,dtype=software_version.dtype)
 fout[master]['entry']['instrument']['detector']['detectorSpecific']['software_version'][()]=\
     software_version[()]
-fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
-    'saturation_value',shape=countrate_cutoff.shape,dtype=countrate_cutoff.dtype)
-fout[master]['entry']['instrument']['detector']['detectorSpecific']['saturation_value'][()]=\
+if satval_not_found:
+    fout[master]['entry']['instrument']['detector']['detectorSpecific']['saturation_value'][()]=\
     satval
+    fout[master]['entry']['instrument']['detector']['detectorSpecific']['countrate_correction_count_cutoff'][()]=\
+    satval
+if saturation_value != None:
+    fout[master]['entry']['instrument']['detector'].create_dataset(\
+    'saturation_value',shape=saturation_value.shape,dtype=saturation_value.dtype)
+    fout[master]['entry']['instrument']['detector']['saturation_value'][()]=saturation_value[()]
+if countrate_correction_count_cutoff != None:
+    fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
+    'countrate_correction_count_cutoff',shape=countrate_correction_count_cutoff.shape,dtype=countrate_correction_count_cutoff.dtype)
+    fout[master]['entry']['instrument']['detector']['detectorSpecific']['countrate_correction_count_cutoff'][()]=\
+        countrate_correction_count_cutoff[()]
+if dS_saturation_value != None:
+    fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
+    'saturation_value',shape=dS_saturation_value.shape,dtype=dS_saturation_value.dtype)
+    fout[master]['entry']['instrument']['detector']['detectorSpecific']['saturation_value'][()]=dSsaturation_value[()]
+if mod0_countrate_cutoff != None:
+    fout[master]['entry']['instrument']['detector']['detectorSpecific']['detectorModule_000'].create_dataset(\
+    'countrate_correction_count_cutoff',shape=mod0_countrate_cutoff.shape,dtype=mod0_countrate_cutoff.dtype)
+    fout[master]['entry']['instrument']['detector']['detectorSpecific']['detectorModule_000']\
+['countrate_correction_count_cutoff'][()]=mod0_countrate_cutoff[()]
 if dS_pixel_mask!=None:
     new_pixel_mask=conv_pixel_mask(dS_pixel_mask,int(args['bin_range']))
     fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
@@ -851,20 +964,56 @@ fout[master]['entry']['sample']['goniometer'].create_dataset(\
 fout[master]['entry']['sample']['goniometer']['omega'][0:(int(args['last_image'])-\
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     angles[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
+
+if phi_range_average != None:
+    fout[master]['entry']['sample']['goniometer'].create_dataset(\
+    'phi_range_average',shape=phi_range_average.shape,dtype=phi_range_average.dtype)
+    fout[master]['entry']['sample']['goniometer']['phi_range_average'][()]=\
+    phi_range_average[()]*int(args['sum_range'])
+    fout[master]['entry']['sample']['goniometer']['phi_range_average'].attrs.create(\
+    'units',ntstr(phi_range_average.attrs['units']),dtype=ntstrdt(phi_range_average.attrs['units']))
+
+if phi!=None:
+    fout[master]['entry']['sample']['goniometer'].create_dataset(\
+    'phi',shape=phi.shape,dtype=phi.dtype) 
+    fout[master]['entry']['sample']['goniometer']['phi'][0:(int(args['last_image'])-\
+    int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
+    phi[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
+
+if chi_range_average != None:
+    fout[master]['entry']['sample']['goniometer'].create_dataset(\
+    'chi_range_average',shape=chi_range_average.shape,dtype=chi_range_average.dtype)
+    fout[master]['entry']['sample']['goniometer']['chi_range_average'][()]=\
+    chi_range_average[()]*int(args['sum_range'])
+    fout[master]['entry']['sample']['goniometer']['chi_range_average'].attrs.create(\
+    'units',ntstr(chi_range_average.attrs['units']),dtype=ntstrdt(chi_range_average.attrs['units']))
+
+if chi!=None:
+    fout[master]['entry']['sample']['goniometer'].create_dataset(\
+    'chi',shape=chi.shape,dtype=chi.dtype) 
+    fout[master]['entry']['sample']['goniometer']['chi'][0:(int(args['last_image'])-\
+    int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
+    chi[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
+
+if kappa_range_average != None:
+    fout[master]['entry']['sample']['goniometer'].create_dataset(\
+    'kappa_range_average',shape=kappa_range_average.shape,dtype=kappa_range_average.dtype)
+    fout[master]['entry']['sample']['goniometer']['kappa_range_average'][()]=\
+    kappa_range_average[()]*int(args['sum_range'])
+    fout[master]['entry']['sample']['goniometer']['kappa_range_average'].attrs.create(\
+    'units',ntstr(kappa_range_average.attrs['units']),dtype=ntstrdt(kappa_range_average.attrs['units']))
+
+if kappa!=None:
+    fout[master]['entry']['sample']['goniometer'].create_dataset(\
+    'kappa',shape=kappa.shape,dtype=kappa.dtype) 
+    fout[master]['entry']['sample']['goniometer']['kappa'][0:(int(args['last_image'])-\
+    int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
+    kappa[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
+
+
+
 fout[master]['entry']['sample']['goniometer']['omega_end'] = \
     fout[master]['entry']['sample']['goniometer']['omega']+osc_width[()]*int(args['sum_range'])
-if phi != None:
-    fout[master]['entry']['sample']['goniometer'].create_dataset(\
-    'phi',shape=phi.shape,dtype=phi.dtype)
-    fout[master]['entry']['sample']['goniometer']['phi'][()]=phi[()]
-if chi != None:
-    fout[master]['entry']['sample']['goniometer'].create_dataset(\
-    'chi',shape=chi.shape,dtype=chi.dtype)
-    fout[master]['entry']['sample']['goniometer']['phi'][()]=chi[()]
-if kappa != None:
-    fout[master]['entry']['sample']['goniometer'].create_dataset(\
-    'kappa',shape=kappa.shape,dtype=kappa.dtype)
-    fout[master]['entry']['sample']['goniometer']['phi'][()]=kappa[()]
 
 for nout_block in range(1,out_number_of_blocks+1):
     nout_image=1+(nout_block-1)*out_number_per_block
@@ -896,7 +1045,7 @@ for nout_block in range(1,out_number_of_blocks+1):
             maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
             dtype='u2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
             **hdf5plugin.Bitshuffle(nelems=0,cname='lz4'))
-    elif args['compression']=='bzstd' or args['compression']=='BSZSTD':
+    elif args['compression']=='bszstd' or args['compression']=='BSZSTD':
         if args['compression-level'] == None:
             clevel=3
         elif int(args['compression-level']) > 22:
@@ -910,6 +1059,13 @@ for nout_block in range(1,out_number_of_blocks+1):
             maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
             dtype='u2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
             **hdf5plugin.Bitshuffle(nelems=0,cname='zstd',clevel=clevel))
+    else:
+        print('l_bnl_compress.py: unrecognized compression, reverting to bslz4')
+        fout[nout_block]['entry']['data'].create_dataset('data',
+            shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
+            maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
+            dtype='u2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
+            **hdf5plugin.Bitshuffle(nelems=0,cname='lz4'))
     fout[nout_block]['entry']['data']['data'].attrs.create('image_nr_low',dtype=np.uint64,
         data=np.uint64(image_nr_low))
     fout[nout_block]['entry']['data']['data'].attrs.create('image_nr_high',dtype=np.uint64,
