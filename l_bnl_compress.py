@@ -487,6 +487,7 @@ try:
         satval = mod0_countrate_cutoff[()]
         satval_not_found = False
 except:
+    print('l_bnl_compress.py: detectorSpecific/detectorModule_000/countrate_correction_count_cutoff not found')
     if satval_not_found:
         print('l_bnl_compress.py: ...count_cutoff not found, using 32765')
         satval=32765
