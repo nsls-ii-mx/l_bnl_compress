@@ -4,7 +4,7 @@
 usage: l_bnl_compress.py [-h] [-1 FIRST_IMAGE] [-b BIN_RANGE] [-c COMPRESSION] [-d DATA_BLOCK_SIZE] \
                          [-H HCOMP_SCALE] [-i INFILE] [-J J2K_TARGET_COMPRESSION_RATIO] \
                          [-l COMPRESSION-LEVEL] [-m OUT_MASTER] [-N LAST_IMAGE] [-o OUT_FILE] \
-                         [-s SUM_RANGE] [-v]
+                         [-q OUT_SQUASH] [-s SUM_RANGE] [-v]
 
 Bin and sum images from a range
 
@@ -27,11 +27,16 @@ options:
   -l COMPRESSION-LEVEL, --compression-level COMPRESSION-LEVEL
                         optional compression level for bszstd
   -m OUT_MASTER, --out_master OUT_MASTER
-                        the output hdf5 master to which to write metadata
+                        the output hdf5 master to which to write metadata, defaults to OUT_FILE_MASTER
+                        if not given, out given as out_file
   -N LAST_IMAGE, --last_image LAST_IMAGE
                         last selected image counting from 1
   -o OUT_FILE, --out_file OUT_FILE
-                        the output hdf5 data file out_file_?????? with a .h5 extension are files to which to write images
+                        the output hdf5 data file out_file_?????? with an .h5 extension are files to which to write images
+  -o OUT_SQUASH, --out_squash OUT_SQUASH
+                        an optional hdf5 data file out_squash_?????? with an .h5 extension are optional files to which
+                        raw j2k or hcomp files paralleling OUT_FILE are written, defaults to OUT_FILE_SQUASH
+                        if given as out_file 
   -s SUM_RANGE, --sum SUM_RANGE
                         an integer image summing range (1 ...) to apply to the selected images
   -v, --verbose         provide addtional information
@@ -55,7 +60,7 @@ import numcodecs
 from astropy.io.fits.hdu.compressed._codecs import HCompress1
 
 version = "1.1.0"
-version_date = "27Jul24"
+version_date = "02Aug24"
 xnt=int(1)
 
 def ntstr(xstr):
@@ -186,7 +191,9 @@ parser.add_argument('-m','--out_master',dest='out_master',
 parser.add_argument('-N','--last_image', dest='last_image', type=int,
    help= 'last selected image counting from 1')
 parser.add_argument('-o','--out_file',dest='out_file',default='out_data',
-   help= 'the output hdf5 data file out_file_?????? with a .h5 extension are files to which to write images')
+   help= 'the output hdf5 data file out_file_?????? with an .h5 extension are files to which to write images')
+parser.add_argument('-q','--out_squash',dest='out_squash',default='out_squash',
+   help= 'the output hdf5 data file out_squash_?????? with an .h5 extension are optional files to which to write raw j2k or hcomp images')
 parser.add_argument('-s','--sum', dest='sum_range', type=int,
    help= 'an integer image summing range (1 ...) to apply to the selected images')
 parser.add_argument('-v','--verbose',dest='verbose',action='store_true', 
@@ -556,6 +563,160 @@ if best_wavelength==None:
     fin.close()
     sys.exit(-1)
 
+
+# find {chi, kappa, omega, phi} in entry/sample/transformations/*
+try:
+    nxt_chi=fin['entry']['sample']['transformations']['chi']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/transformations/chi: ', nxt_chi)
+        print('                   entry/sample/transformations/chi[()]: ', nxt_chi[()])
+except:
+    print('l_bnl_compress.py: entry/sample/transformations/chi not found')
+    nxt_chi = None
+
+try:
+    nxt_kappa=fin['entry']['sample']['transformations']['kappa']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/transformations/kappa: ', nxt_kappa)
+        print('                   entry/sample/transformations/kappa[()]: ', nxt_kappa[()])
+except:
+    print('l_bnl_compress.py: entry/sample/transformations/kappa not found')
+    nxt_kappa = None
+
+try:
+    nxt_omega=fin['entry']['sample']['transformations']['omega']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/transformations/omega: ', nxt_omega)
+        print('                   entry/sample/transformations/omega[()]: ', nxt_omega[()])
+except:
+    print('l_bnl_compress.py: entry/sample/transformations/omega not found')
+    nxt_omega = None
+
+try:
+    nxt_phi=fin['entry']['sample']['transformations']['phi']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/transformations/phi: ', nxt_phi)
+        print('                   entry/sample/transformations/phi[()]: ', nxt_phi[()])
+except:
+    print('l_bnl_compress.py: entry/sample/transformations/phi not found')
+    nxt_phi = None
+
+
+# find {chi, kappa, omega, phi} in entry/sample/transformations/*
+try:
+    nxt_chi_end=fin['entry']['sample']['transformations']['chi_end']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/transformations/chi_end: ', nxt_chi_end)
+        print('                   entry/sample/transformations/chi_end[()]: ', nxt_chi_end[()])
+except:
+    print('l_bnl_compress.py: entry/sample/transformations/chi_end not found')
+    nxt_chi_end = None
+
+try:
+    nxt_kappa_end=fin['entry']['sample']['transformations']['kappa_end']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/transformations/kappa_end: ', nxt_kappa_end)
+        print('                   entry/sample/transformations/kappa_end[()]: ', nxt_kappa_end[()])
+except:
+    print('l_bnl_compress.py: entry/sample/transformations/kappa_end not found')
+    nxt_kappa_end = None
+
+try:
+    nxt_omega_end=fin['entry']['sample']['transformations']['omega_end']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/transformations/omega_end: ', nxt_omega_end)
+        print('                   entry/sample/transformations/omega_end[()]: ', nxt_omega_end[()])
+except:
+    print('l_bnl_compress.py: entry/sample/transformations/omega_end not found')
+    nxt_omega_end = None
+
+try:
+    nxt_phi_end=fin['entry']['sample']['transformations']['phi_end']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/transformations/phi_end: ', nxt_phi_end)
+        print('                   entry/sample/transformations/phi_end[()]: ', nxt_phi_end[()])
+except:
+    print('l_bnl_compress.py: entry/sample/transformations/phi_end not found')
+    nxt_phi_end = None
+
+
+# find {chi, kappa, omega, phi} in entry/sample/transformations/*_end
+try:
+    nxt_chi_range_average=fin['entry']['sample']['transformations']['chi_range_average']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/transformations/chi_range_average: ', nxt_chi_range_average)
+        print('                   entry/sample/transformations/chi_range_average[()]: ', nxt_chi_range_average[()])
+except:
+    print('l_bnl_compress.py: entry/sample/transformations/chi_range_average not found')
+    nxt_chi_range_average = None
+
+try:
+    nxt_kappa_range_average=fin['entry']['sample']['transformations']['kappa_range_average']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/transformations/kappa_range_average: ', nxt_kappa_range_average)
+        print('                   entry/sample/transformations/kappa_range_average[()]: ', nxt_kappa_range_average[()])
+except:
+    print('l_bnl_compress.py: entry/sample/transformations/kappa_range_average not found')
+    nxt_kappa_range_average = None
+
+try:
+    nxt_omega_range_average=fin['entry']['sample']['transformations']['omega_range_average']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/transformations/omega_range_average: ', nxt_omega_range_average)
+        print('                   entry/sample/transformations/omega_range_average[()]: ', nxt_omega_range_average[()])
+except:
+    print('l_bnl_compress.py: entry/sample/transformations/omega_range_average not found')
+    nxt_omega_range_average = None
+
+try:
+    nxt_phi_range_average=fin['entry']['sample']['transformations']['phi_range_average']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/transformations/phi_range_average: ', nxt_phi_range_average)
+        print('                   entry/sample/transformations/phi_range_average[()]: ', nxt_phi_range_average[()])
+except:
+    print('l_bnl_compress.py: entry/sample/transformations/phi_range_average not found')
+    nxt_phi_range_average = None
+
+
+# find {chi, kappa, omega, phi} in entry/sample/transformations/*_range_total
+try:
+    nxt_chi_range_total=fin['entry']['sample']['transformations']['chi_range_total']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/transformations/chi_range_total: ', nxt_chi_range_total)
+        print('                   entry/sample/transformations/chi_range_total[()]: ', nxt_chi_range_total[()])
+except:
+    print('l_bnl_compress.py: entry/sample/transformations/chi_range_total not found')
+    nxt_chi_range_total = None
+
+try:
+    nxt_kappa_range_total=fin['entry']['sample']['transformations']['kappa_range_total']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/transformations/kappa_range_total: ', nxt_kappa_range_total)
+        print('                   entry/sample/transformations/kappa_range_total[()]: ', nxt_kappa_range_total[()])
+except:
+    print('l_bnl_compress.py: entry/sample/transformations/kappa_range_total not found')
+    nxt_kappa_range_total = None
+
+try:
+    nxt_omega_range_total=fin['entry']['sample']['transformations']['omega_range_total']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/transformations/omega_range_total: ', nxt_omega_range_total)
+        print('                   entry/sample/transformations/omega_range_total[()]: ', nxt_omega_range_total[()])
+except:
+    print('l_bnl_compress.py: entry/sample/transformations/omega_range_total not found')
+    nxt_omega_range_total = None
+
+try:
+    nxt_phi_range_total=fin['entry']['sample']['transformations']['phi_range_total']
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: entry/sample/transformations/phi_range_total: ', nxt_phi_range_total)
+        print('                   entry/sample/transformations/phi_range_total[()]: ', nxt_phi_range_total[()])
+except:
+    print('l_bnl_compress.py: entry/sample/transformations/phi_range_total not found')
+    nxt_phi_range_total = None
+
+
+
 try:
     osc_width=fin['entry']['sample']['goniometer']['omega_range_average']
     if args['verbose'] == True:
@@ -585,7 +746,7 @@ except:
     chi_range_average=None
 
 try:
-    omega_range_average = fin['entry']['sample']['goniometer']['kappa_range_average']
+    kappa_range_average = fin['entry']['sample']['goniometer']['kappa_range_average']
     if args['verbose'] == True:
         print('l_bnl_compress.py: entry/sample/goniometer/kappa_range_average: ', kappa_range_average)
         print('                   entry/sample/goniometer/kappa_range_average[()]: ', kappa_range_average[()])
@@ -752,11 +913,15 @@ if args['verbose'] == True:
     print('out_number_per_block: ', out_number_per_block)
     print('out_number_of_blocks: ', out_number_of_blocks)
 fout={}
+if args['out_squash'] != None:
+    fout_squash={}
 
 # create the master file
 master=0
-if args['out_master']==None:
+if args['out_master']==None or args['out_master']=='out_file':
     args['out_master']=args['out_file']+"_master"
+if args['out_squash']=='out_file':
+    args['out_squash']=args['out_file']+"_squash"
 fout[master] = h5py.File(args['out_master']+".h5",'w')
 fout[master].attrs.create('default',ntstr('entry'),dtype=ntstrdt('entry'))
 fout[master].create_group('entry') 
@@ -1016,6 +1181,34 @@ if kappa!=None:
 fout[master]['entry']['sample']['goniometer']['omega_end'] = \
     fout[master]['entry']['sample']['goniometer']['omega']+osc_width[()]*int(args['sum_range'])
 
+if nxt_chi_range_average != None:
+    if not ('transformations' in  fout[master]['entry']['sample'].keys()):
+        fout[master]['entry']['sample'].create_group('transformations')
+    fout[master]['entry']['sample']['transformations'].create_dataset(\
+    'chi_range_average',shape=nxt_chi_range_average.shape,dtype=nxt_chi_range_average.dtype)
+    fout[master]['entry']['sample']['transformations']['chi_range_average'][()]=\
+    nxt_chi_range_average[()]*int(args['sum_range'])
+    fout[master]['entry']['sample']['transformations']['chi_range_average'].attrs.create(\
+    'units',ntstr(nxt_chi_range_average.attrs['units']),dtype=ntstrdt(nxt_chi_range_average.attrs['units']))
+
+if nxt_chi!=None:
+    if not ('transformations' in  fout[master]['entry']['sample'].keys()):
+        fout[master]['entry']['sample'].create_group('transformations')
+    fout[master]['entry']['sample']['transformations'].create_dataset(\
+    'chi',shape=nxt_chi.shape,dtype=nxt_chi.dtype)
+    fout[master]['entry']['sample']['transformations']['chi'][0:(int(args['last_image'])-\
+    int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
+    nxt_chi[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
+
+if nxt_chi_end!=None:
+    if not ('transformations' in  fout[master]['entry']['sample'].keys()):
+        fout[master]['entry']['sample'].create_group('transformations')
+    fout[master]['entry']['sample']['transformations'].create_dataset(\
+    'chi_end',shape=nxt_chi_end.shape,dtype=nxt_chi_end.dtype)
+    fout[master]['entry']['sample']['transformations']['chi_end'][0:(int(args['last_image'])-\
+    int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
+    nxt_chi_end[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
+
 for nout_block in range(1,out_number_of_blocks+1):
     nout_image=1+(nout_block-1)*out_number_per_block
     image_nr_low=nout_image
@@ -1029,6 +1222,12 @@ for nout_block in range(1,out_number_of_blocks+1):
     fout[nout_block]['entry'].attrs.create('NX_class',ntstr('NXentry'),dtype=ntstrdt('NXentry'))
     fout[nout_block]['entry'].create_group('data')
     fout[nout_block]['entry']['data'].attrs.create('NX_class',ntstr('NXdata'),dtype=ntstrdt('NXdata'))
+    if args['out_squash'] != None:
+        fout_squash[nout_block] = h5py.File(args['out_squash']+"_"+str(nout_block).zfill(6)+".h5",'w')
+        fout_squash[nout_block].create_group('entry')
+        fout_squash[nout_block]['entry'].attrs.create('NX_class',ntstr('NXentry'),dtype=ntstrdt('NXentry'))
+        fout_squash[nout_block]['entry'].create_group('data')
+        fout_squash[nout_block]['entry']['data'].attrs.create('NX_class',ntstr('NXdata'),dtype=ntstrdt('NXdata'))
     if args['compression']==None:
         fout[nout_block]['entry']['data'].create_dataset('data',
             shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
@@ -1071,7 +1270,16 @@ for nout_block in range(1,out_number_of_blocks+1):
         data=np.uint64(image_nr_low))
     fout[nout_block]['entry']['data']['data'].attrs.create('image_nr_high',dtype=np.uint64,
         data=np.uint64(image_nr_high))
+    if args['out_squash'] != None:
+        fout_squash[nout_block]['entry']['data'].attrs.create('image_nr_low',dtype=np.uint64,
+            data=np.uint64(image_nr_low))
+        fout[nout_block]['entry']['data']['data'].attrs.create('image_nr_high',dtype=np.uint64,
+            data=np.uint64(image_nr_high))
     print("fout[nout_block]['entry']['data']['data']: ",fout[nout_block]['entry']['data']['data'])
+    hcomp_tot_compimgsize=0
+    nhcomp_img = 0
+    j2k_tot_compimgsize=0
+    nj2k_img=0
     for out_image in range(nout_image,lim_nout_image):
         if args['hcomp_scale']==None and args['j2k_target_compression_ratio']==None: 
             fout[nout_block]['entry']['data']['data'][out_image-nout_image,0:nout_data_shape[0],0:nout_data_shape[1]] \
@@ -1084,9 +1292,20 @@ for nout_block in range(1,out_number_of_blocks+1):
             img32=(np.clip(img16,0,satval)).astype('i4')
             hcomp = HCompress1(scale=int(myscale),smooth=False,bytepix=4,nx=nout_data_shape[0],ny=nout_data_shape[1])
             hcomp_data=hcomp.encode(img32)
+            if args['out_squash'] != None:
+                fout_squash[nout_block]['entry']['data'].create_dataset('data_'+str(out_image).zfill(6),data=bytearray(hcomp_data))
+                if args['verbose'] == True:
+                    print (fout_squash[nout_block]['entry']['data']['data_'+str(out_image).zfill(6)])
+                fout_squash[nout_block]['entry']['data']['data_'+str(out_image).zfill(6)].attrs.create('compression',ntstr('hcomp'),dtype=ntstrdt('hcomp'))
+                fout_squash[nout_block]['entry']['data']['data_'+str(out_image).zfill(6)].attrs.create('compression_level',myscale,dtype=ntstrdt('i2'))
             hdecomp_data=hcomp.decode(np.frombuffer(hcomp_data,dtype=np.uint8))
             decompressed_data = hdecomp_data.astype('i4').reshape((nout_data_shape[0],nout_data_shape[1]))
             decompressed_data = np.clip(decompressed_data,0,satval)
+            hcomp_tot_compimgsize = hcomp_tot_compimgsize+sys.getsizeof(hcomp_data)
+            nhcomp_img = nhcomp_img+1
+            if args['verbose'] == True:
+                print('l_bnl_compress.py: Hcompress sys.getsizeof(): ', sys.getsizeof(hcomp_data))
+                print('                   decompressed_data sys.getsizeof: ', sys.getsizeof(decompressed_data))
             fout[nout_block]['entry']['data']['data'][out_image-nout_image, \
                 0:nout_data_shape[0],0:nout_data_shape[1]] \
                 = np.asarray(decompressed_data,dtype='u2')
@@ -1102,8 +1321,23 @@ for nout_block in range(1,out_number_of_blocks+1):
             outtemp=args['out_file']+"_"+str(out_image).zfill(6)+".j2k"
             print("outtemp: ",outtemp)
             j2k=glymur.Jp2k(outtemp, data=img16, cratios=[mycrat])
+            print ('j2k.dtype', j2k.dtype)
+            print ('j2k.shape', j2k.shape)
             jdecomped = j2k[:]
             arr_final = np.array(jdecomped, dtype='u2')
+            file_size = os.path.getsize(outtemp)
+            if args['out_squash'] != None:
+                with open(outtemp, 'rb') as f:
+                    f.seek(0)
+                    fout_squash[nout_block]['entry']['data'].create_dataset('data_'+str(out_image).zfill(6),data=bytearray(f.read()))
+                if args['verbose'] == True:
+                    print (fout_squash[nout_block]['entry']['data']['data_'+str(out_image).zfill(6)])
+                fout_squash[nout_block]['entry']['data']['data_'+str(out_image).zfill(6)].attrs.create('compression',ntstr('j2k'),dtype=ntstrdt('j2k'))
+                fout_squash[nout_block]['entry']['data']['data_'+str(out_image).zfill(6)].attrs.create('compression_level',mycrat,dtype=ntstrdt('i2'))
+            j2k_tot_compimgsize = j2k_tot_compimgsize + file_size
+            nj2k_img = nj2k_img+1
+            if args['verbose'] == True:
+                print('l_bnl_compress.py: JPEG-2000 outtemp file_size: ', file_size )
             fout[nout_block]['entry']['data']['data'][out_image-nout_image, \
                 0:nout_data_shape[0],0:nout_data_shape[1]] \
                 = np.clip(arr_final,0,satval)
@@ -1112,6 +1346,13 @@ for nout_block in range(1,out_number_of_blocks+1):
             del j2k
             os.remove(outtemp)
     fout[nout_block].close()
+    if nhcomp_img > 0:
+        print('l_bnl_compress.py: hcomp avg compressed image size: ', int(.5+hcomp_tot_compimgsize/nhcomp_img))
+    if nj2k_img > 0:
+        print('l_bnl_compress.py: j2k avg compressed imgage size: ', int(.5+j2k_tot_compimgsize/nj2k_img))
     fout[master]['entry']['data']["data_"+str(nout_block).zfill(6)] \
         = h5py.ExternalLink(args['out_file']+"_"+str(nout_block).zfill(6)+".h5", "/entry/data/data")
+    if args['out_squash'] != None:
+        fout[master]['entry']['data']["squash_"+str(nout_block).zfill(6)] \
+        = h5py.ExternalLink(args['out_squash']+"_"+str(nout_block).zfill(6)+".h5", "/entry/data/squash")
 fout[master].close()

@@ -1,6 +1,6 @@
 #!/bin/csh
 set verbose
-nice cctbx.python l_bnl_compress.py  -i JLJ735_14_l_Raster_7785_master.h5  -1 1 -N 29 -b 2 -s 2 -v -d 5 -H 4 -m JLJ735_14_l_Raster_7785_b2s2h4_master -o JLJ735_14_l_Raster_7785_b2s2h4 -c bslz4
+nice cctbx.python l_bnl_compress.py  -i JLJ735_14_l_Raster_7785_master.h5  -1 1 -N 29 -b 2 -s 2 -v -d 5 -H 4 -m JLJ735_14_l_Raster_7785_b2s2h4_master -o JLJ735_14_l_Raster_7785_b2s2h4 -c bslz4 -q out_file
 tar -cf - ./JLJ735_14_l_Raster_7785_b2s2h4*.h5 | zstd -6 > JLJ735_14_l_Raster_7785_b2s2h4.tar.zstd
 nice cctbx.python l_bnl_compress.py  -i JLJ735_14_l_Raster_7785_master.h5  -1 1 -N 29 -b 2 -s 2 -v -d 5 -H 16 -m JLJ735_14_l_Raster_7785_b2s2h16_master -o JLJ735_14_l_Raster_7785_b2s2h16 -c bslz4
 tar -cf - ./JLJ735_14_l_Raster_7785_b2s2h16*.h5 | zstd -6 > JLJ735_14_l_Raster_7785_b2s2h16.tar.zstd
