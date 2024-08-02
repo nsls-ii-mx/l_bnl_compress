@@ -1094,6 +1094,9 @@ if sample_wavelength!=None:
         fout[master]['entry']['sample']['beam'].create_dataset(\
         'incident_wavelength',shape=sample_wavelength.shape,dtype=sample_wavelength.dtype)
     fout[master]['entry']['sample']['beam']['incident_wavelength'][()]=sample_wavelength[()]
+    if 'units' in sample_wavelength.attrs.keys():
+        fout[master]['entry']['sample']['beam']['incident_wavelength'].attrs.create('units',\
+            sample_wavelength.attrs['units'])
 if instrument_wavelength!=None:
     if not ('beam' in fout[master]['entry']['instrument'].keys()):
         fout[master]['entry']['instrument'].create_group('beam')
@@ -1102,6 +1105,9 @@ if instrument_wavelength!=None:
         fout[master]['entry']['instrument']['beam'].create_dataset(\
         'wavelength',shape=instrument_wavelength.shape,dtype=instrument_wavelength.dtype)
     fout[master]['entry']['instrument']['beam']['wavelength'][()]=instrument_wavelength[()]
+    if 'units' in instrument_wavelength.attrs.keys():
+        fout[master]['entry']['instrument']['beam']['wavelength'].attrs.create('units',\
+            instrument_wavelength.attrs['units'])
 if monochromater_wavelength!=None:
     if not ('monochromater' in fout[master]['entry']['instrument'].keys()):
         fout[master]['entry']['instrument'].create_group('monochromater')
@@ -1110,6 +1116,9 @@ if monochromater_wavelength!=None:
         fout[master]['entry']['instrument']['monochromater'].create_dataset(\
         'wavelength',shape=monochromater_wavelength.shape,dtype=monochromater_wavelength.dtype)
     fout[master]['entry']['instrument']['monochromater']['wavelength'][()]=monochromater_wavelength[()]
+    if 'units' in monochromater_wavelength.attrs.keys():
+        fout[master]['entry']['instrument']['monochromater']['wavelength'].attrs.create('units',\
+            monochromater_wavelength.attrs['units'])
 if beam_incident_wavelength!=None:
     if not ('beam' in fout[master]['entry']['instrument'].keys()):
         fout[master]['entry']['instrument'].create_group('beam')
@@ -1118,6 +1127,9 @@ if beam_incident_wavelength!=None:
         fout[master]['entry']['instrument']['beam'].create_dataset(\
         'incident_wavelength',shape=beam_incident_wavelength.shape,dtype=beam_incident_wavelength.dtype)
     fout[master]['entry']['instrument']['beam']['incident_wavelength'][()]=beam_incident_wavelength[()]
+    if 'units' in beam_incident_wavelength.attrs.keys():
+        fout[master]['entry']['instrument']['beam']['incident_wavelength'].attrs.create('units',\
+            beam_incident_wavelength.attrs['units'])
 
 fout[master]['entry']['sample']['goniometer'].create_dataset(\
     'omega_range_average',shape=osc_width.shape,dtype=osc_width.dtype)
