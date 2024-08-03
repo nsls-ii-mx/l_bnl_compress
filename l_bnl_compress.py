@@ -1067,6 +1067,8 @@ if dS_saturation_value != None:
     'saturation_value',shape=dS_saturation_value.shape,dtype=dS_saturation_value.dtype)
     fout[master]['entry']['instrument']['detector']['detectorSpecific']['saturation_value'][()]=dSsaturation_value[()]
 if mod0_countrate_cutoff != None:
+    if not ('detectorModule_000' in fout[master]['entry']['instrument']['detector']['detectorSpecific'].keys()):
+        fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_group('detectorModule_000')
     fout[master]['entry']['instrument']['detector']['detectorSpecific']['detectorModule_000'].create_dataset(\
     'countrate_correction_count_cutoff',shape=mod0_countrate_cutoff.shape,dtype=mod0_countrate_cutoff.dtype)
     fout[master]['entry']['instrument']['detector']['detectorSpecific']['detectorModule_000']\
