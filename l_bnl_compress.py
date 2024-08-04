@@ -928,6 +928,7 @@ fout[master].create_group('entry')
 fout[master]['entry'].attrs.create('NX_class',ntstr('NXentry'),dtype=ntstrdt('NXentry'))
 fout[master]['entry'].attrs.create('default',ntstr('data'),dtype=ntstrdt('data'))
 fout[master]['entry'].create_group('data') 
+fout[master]['entry']['data'].attrs.create('NX_class',ntstr('NXdata'),dtype=ntstrdt('NXdata'))
 if top_definition != None:
   fout[master]['entry'].create_dataset('definition',shape=top_definition.shape,dtype=top_definition.dtype)
   fout[master]['entry']['definition'][()]=top_definition[()]
@@ -1368,5 +1369,5 @@ for nout_block in range(1,out_number_of_blocks+1):
         = h5py.ExternalLink(args['out_file']+"_"+str(nout_block).zfill(6)+".h5", "/entry/data/data")
     if args['out_squash'] != None:
         fout[master]['entry']['data']["squash_"+str(nout_block).zfill(6)] \
-        = h5py.ExternalLink(args['out_squash']+"_"+str(nout_block).zfill(6)+".h5", "/entry/data/squash")
+        = h5py.ExternalLink(args['out_squash']+"_"+str(nout_block).zfill(6)+".h5", "/entry/data")
 fout[master].close()
