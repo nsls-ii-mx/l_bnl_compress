@@ -969,56 +969,56 @@ if bit_depth_readout != None:
 if countrate_correction_applied != None:
     fout[master]['entry']['instrument']['detector'].create_dataset(\
         'countrate_correction_applied',shape=countrate_correction_applied.shape,dtype=countrate_correction_applied.dtype)
-    fout[master]['entry']['instrument']['detector']['bit_depth_image'][()]=\
+    fout[master]['entry']['instrument']['detector']['countrate_correction_applied'][()]=\
         countrate_correction_applied[()]
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'sensor_thickness',shape=thickness.shape,dtype=thickness.dtype)
 fout[master]['entry']['instrument']['detector']['sensor_thickness'][()]=\
     thickness[()]
 fout[master]['entry']['instrument']['detector']['sensor_thickness'].attrs.create(\
-    'units',ntstr(thickness.attrs['units']),dtype=ntstrdt(thickness.attrs['units']))
+    'units',ntstr(thickness.attrs['units'].decode('utf8')),dtype=ntstrdt(thickness.attrs['units'].decode('utf8')))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'beam_center_x',shape=beamx.shape,dtype=beamx.dtype)
 fout[master]['entry']['instrument']['detector']['beam_center_x'][()]=\
     beamx[()]/int(args['bin_range'])
 fout[master]['entry']['instrument']['detector']['beam_center_x'].attrs.create(\
-    'units',ntstr(beamx.attrs['units']),dtype=ntstrdt(beamx.attrs['units']))
+    'units',ntstr(beamx.attrs['units'].decode('utf8')),dtype=ntstrdt(beamx.attrs['units'].decode('utf8')))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'beam_center_y',shape=beamy.shape,dtype=beamy.dtype)
 fout[master]['entry']['instrument']['detector']['beam_center_y'][()]\
     =beamy[()]/int(args['bin_range'])
 fout[master]['entry']['instrument']['detector']['beam_center_y'].attrs.create(\
-   'units',ntstr(beamy.attrs['units']),dtype=ntstrdt(beamy.attrs['units']))
+   'units',ntstr(beamy.attrs['units'].decode('utf8')),dtype=ntstrdt(beamy.attrs['units'].decode('utf8')))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'count_time',shape=count_time.shape,dtype=count_time.dtype)
 fout[master]['entry']['instrument']['detector']['count_time'][()]=\
     count_time[()]*int(args['sum_range'])
 fout[master]['entry']['instrument']['detector']['count_time'].attrs.create(\
-    'units',ntstr(count_time.attrs['units']),dtype=ntstrdt(count_time.attrs['units']))
+    'units',ntstr(count_time.attrs['units'].decode('utf8')),dtype=ntstrdt(count_time.attrs['units'].decode('utf8')))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'detector_distance',shape=distance.shape,dtype=distance.dtype)
 fout[master]['entry']['instrument']['detector']['detector_distance'][()]=\
     distance[()]
 fout[master]['entry']['instrument']['detector']['detector_distance'].attrs.create(\
-    'units',ntstr(distance.attrs['units']),dtype=ntstrdt(distance.attrs['units']))
+    'units',ntstr(distance.attrs['units'].decode('utf8')),dtype=ntstrdt(distance.attrs['units'].decode('utf8')))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'frame_time',shape=frame_time.shape,dtype=frame_time.dtype)
 fout[master]['entry']['instrument']['detector']['frame_time'][()]=\
     frame_time[()]*int(args['sum_range'])
 fout[master]['entry']['instrument']['detector']['frame_time'].attrs.create(\
-    'units',ntstr(frame_time.attrs['units']),dtype=ntstrdt(frame_time.attrs['units']))
+    'units',ntstr(frame_time.attrs['units'].decode('utf8')),dtype=ntstrdt(frame_time.attrs['units'].decode('utf8')))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'x_pixel_size',shape=pixelsizex.shape,dtype=pixelsizex.dtype)
 fout[master]['entry']['instrument']['detector']['x_pixel_size'][()]=\
     pixelsizex[()]*int(args['sum_range'])
 fout[master]['entry']['instrument']['detector']['x_pixel_size'].attrs.create(\
-    'units',ntstr(pixelsizex.attrs['units']),dtype=ntstrdt(pixelsizex.attrs['units']))
+    'units',ntstr(pixelsizex.attrs['units'].decode('utf8')),dtype=ntstrdt(pixelsizex.attrs['units'].decode('utf8')))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'y_pixel_size',shape=pixelsizey.shape,dtype=pixelsizey.dtype)
 fout[master]['entry']['instrument']['detector']['y_pixel_size'][()]=\
     pixelsizey[()]*int(args['sum_range'])
 fout[master]['entry']['instrument']['detector']['y_pixel_size'].attrs.create(\
-    'units',ntstr(pixelsizey.attrs['units']),dtype=ntstrdt(pixelsizey.attrs['units']))
+    'units',ntstr(pixelsizey.attrs['units'].decode('utf8')),dtype=ntstrdt(pixelsizey.attrs['units'].decode('utf8')))
 if pixel_mask!=None:
     new_pixel_mask=conv_pixel_mask(pixel_mask,int(args['bin_range']))
     fout[master]['entry']['instrument']['detector'].create_dataset(\
@@ -1110,7 +1110,7 @@ if instrument_wavelength!=None:
     fout[master]['entry']['instrument']['beam']['wavelength'][()]=instrument_wavelength[()]
     if 'units' in instrument_wavelength.attrs.keys():
         fout[master]['entry']['instrument']['beam']['wavelength'].attrs.create('units',\
-            instrument_wavelength.attrs['units'])
+            instrument_wavelength.attrs['units'].decode('utf8'))
 if monochromater_wavelength!=None:
     if not ('monochromater' in fout[master]['entry']['instrument'].keys()):
         fout[master]['entry']['instrument'].create_group('monochromater')
@@ -1121,7 +1121,7 @@ if monochromater_wavelength!=None:
     fout[master]['entry']['instrument']['monochromater']['wavelength'][()]=monochromater_wavelength[()]
     if 'units' in monochromater_wavelength.attrs.keys():
         fout[master]['entry']['instrument']['monochromater']['wavelength'].attrs.create('units',\
-            monochromater_wavelength.attrs['units'])
+            monochromater_wavelength.attrs['units'].decode('utf8'))
 if beam_incident_wavelength!=None:
     if not ('beam' in fout[master]['entry']['instrument'].keys()):
         fout[master]['entry']['instrument'].create_group('beam')
@@ -1132,14 +1132,14 @@ if beam_incident_wavelength!=None:
     fout[master]['entry']['instrument']['beam']['incident_wavelength'][()]=beam_incident_wavelength[()]
     if 'units' in beam_incident_wavelength.attrs.keys():
         fout[master]['entry']['instrument']['beam']['incident_wavelength'].attrs.create('units',\
-            beam_incident_wavelength.attrs['units'])
+            beam_incident_wavelength.attrs['units'].decode('utf8'))
 
 fout[master]['entry']['sample']['goniometer'].create_dataset(\
     'omega_range_average',shape=osc_width.shape,dtype=osc_width.dtype)
 fout[master]['entry']['sample']['goniometer']['omega_range_average'][()]=\
     osc_width[()]*int(args['sum_range'])
 fout[master]['entry']['sample']['goniometer']['omega_range_average'].attrs.create(\
-    'units',ntstr(osc_width.attrs['units']),dtype=ntstrdt(osc_width.attrs['units']))
+    'units',ntstr(osc_width.attrs['units'].decode('utf8')),dtype=ntstrdt(osc_width.attrs['units'].decode('utf8')))
 fout[master]['entry']['sample']['goniometer'].create_dataset(\
     'omega',shape=angles.shape,dtype=angles.dtype) 
 fout[master]['entry']['sample']['goniometer']['omega'][0:(int(args['last_image'])-\
@@ -1152,7 +1152,7 @@ if phi_range_average != None:
     fout[master]['entry']['sample']['goniometer']['phi_range_average'][()]=\
     phi_range_average[()]*int(args['sum_range'])
     fout[master]['entry']['sample']['goniometer']['phi_range_average'].attrs.create(\
-    'units',ntstr(phi_range_average.attrs['units']),dtype=ntstrdt(phi_range_average.attrs['units']))
+    'units',ntstr(phi_range_average.attrs['units'].decode('utf8')),dtype=ntstrdt(phi_range_average.attrs['units'].decode('utf8')))
 
 if phi!=None:
     fout[master]['entry']['sample']['goniometer'].create_dataset(\
@@ -1167,7 +1167,7 @@ if chi_range_average != None:
     fout[master]['entry']['sample']['goniometer']['chi_range_average'][()]=\
     chi_range_average[()]*int(args['sum_range'])
     fout[master]['entry']['sample']['goniometer']['chi_range_average'].attrs.create(\
-    'units',ntstr(chi_range_average.attrs['units']),dtype=ntstrdt(chi_range_average.attrs['units']))
+    'units',ntstr(chi_range_average.attrs['units'].decode('utf8')),dtype=ntstrdt(chi_range_average.attrs['units'].decode('utf8')))
 
 if chi!=None:
     fout[master]['entry']['sample']['goniometer'].create_dataset(\
