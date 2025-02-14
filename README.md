@@ -73,7 +73,7 @@ of the output to miniCBFs with eiger2cbf is necessary at present.
 This is a python program that needs Python 3 running in a Linux-like environment. 
 It was created on a Debian 12 system and tested on a RHEL8 environment.  It is 
 not likely to work with a python version prior to 3.9.  A suitable python with 
-many modules upon which l_bnl_compress.py depends can e provided by use 
+many modules upon which l_bnl_compress.py depends can be provided by use 
 of cctbx.python from the DIALS package.
 
 The modules upon which this program depends are:
