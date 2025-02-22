@@ -192,14 +192,14 @@ def bin(old_image,bin_range,satval):
 
 
 parser = argparse.ArgumentParser(description='Bin and sum images from a range')
-parser.add_argument('-1','--first_image', dest='first_image', type=int,
-   help= 'first selected image counting from 1')
-parser.add_argument('-b','--bin', dest='bin_range', type=int,
-   help= 'an integer image binning range (1 ...) to apply to each selected image') 
-parser.add_argument('-c','--compression', dest='compression',
-   help= 'optional compression, bslz4, bszstd, or bshuf')
-parser.add_argument('-d','--data_block_size', dest='data_block_size', type=int,
-   help= 'data block size in images for out_file')
+parser.add_argument('-1','--first_image', dest='first_image', type=int, nargs='?', const=1, default=1,
+   help= 'first selected image counting from 1, defaults to 1')
+parser.add_argument('-b','--bin', dest='bin_range', type=int, nargs='?', const=1, default=1,
+   help= 'an integer image binning range (1 ...) to apply to each selected image, defaults to 1') 
+parser.add_argument('-c','--compression', dest='compression', nargs='?', const='bszstd', default='bszstd',
+   help= 'optional compression, bslz4, bszstd, or bshuf, defaults to bszstd')
+parser.add_argument('-d','--data_block_size', dest='data_block_size', type=int, nargs='?', const=100, default=100,
+   help= 'data block size in images for out_file, defaults to 100')
 parser.add_argument('-H','--Hcompress', dest='hcomp_scale', type=int,
    help= 'Hcompress scale compression, immediately followed by decompression')
 parser.add_argument('-i','--infile',dest='infile',
@@ -211,13 +211,13 @@ parser.add_argument('-l','--compression_level', dest='compression_level', type=i
 parser.add_argument('-m','--out_master',dest='out_master',
    help= 'the output hdf5 master to which to write metadata')
 parser.add_argument('-N','--last_image', dest='last_image', type=int,
-   help= 'last selected image counting from 1')
+   help= 'last selected image counting from 1, defaults to number of images collected')
 parser.add_argument('-o','--out_file',dest='out_file',default='out_data',
    help= 'the output hdf5 data file out_file_?????? with an .h5 extension are files to which to write images')
 parser.add_argument('-q','--out_squash',dest='out_squash',default='out_squash',
    help= 'the output hdf5 data file out_squash_?????? with an .h5 extension are optional files to which to write raw j2k or hcomp images')
-parser.add_argument('-s','--sum', dest='sum_range', type=int,
-   help= 'an integer image summing range (1 ...) to apply to the selected images')
+parser.add_argument('-s','--sum', dest='sum_range', type=int, nargs='?', const=1, default=1,
+   help= 'an integer image summing range (1 ...) to apply to the selected images, defaults to 1')
 parser.add_argument('-v','--verbose',dest='verbose',action='store_true', 
    help= 'provide addtional information')
 parser.add_argument('-V','--version',dest='report_version',action='store_true',
@@ -479,6 +479,17 @@ except:
     print('l_bnl_compress.py: detectorSpecific/ntrigger not found')
     fin.close()
     sys.exit(-1)
+
+nimages=int(xnimages[()])
+ntrigger=int(xntrigger[()])
+if args['verbose'] == True:     
+    print('nimages: ',nimages)
+    print('ntrigger: ',ntrigger)
+if nimages == 1:   
+    nimages = ntrigger
+    print('l_bnl_compress.py: warning: settng nimages to ',nimages,' from ntrigger')
+if args['last_image'] == None:
+    args['last_image'] =  nimages 
 
 try:
     software_version=detectorSpecific['software_version']
@@ -1049,15 +1060,6 @@ except:
     print('l_bnl_compress.py: entry/sample/goniometer not found')
     samp_gon = None
 
-nimages=xnimages[()]
-ntrigger=xntrigger[()]
-if args['verbose'] == True:
-    print('nimages: ',nimages)
-    print('ntrigger: ',ntrigger)
-if int(nimages) == 1:
-    nimages = int(ntrigger)
-    print('l_bnl_compress.py: warning: settng nimages to ',int(nimages),' from ntrigger')
-
 try:
     datagroup=fin['entry']['data']
 except:
@@ -1098,6 +1100,10 @@ if (args['bin_range'] == None) or (args['bin_range'] < 2):
 
 new_nimage = 0
 new_images = {}
+
+print("args['first_image']",args['first_image'])
+print("(args['last_image'])+1",(args['last_image'])+1)
+print("args['sum_range']",args['sum_range'])
 
 for image in range(args['first_image'],(args['last_image'])+1,args['sum_range']):
     lim_image=image+int(args['sum_range'])
@@ -1267,6 +1273,7 @@ fout[master]['entry']['instrument']['detector']['detectorSpecific'].attrs.create
 new_shape=conv_image_shqpe((int(ypixels[()]),int(xpixels[()])),int(args['bin_range']))
 fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
     'auto_summation',data=1,dtype='i1')
+print('compression: ',args['compression'])
 fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
     'compression',data=args['compression'])
 fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
