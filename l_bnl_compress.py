@@ -218,7 +218,7 @@ parser.add_argument('-q','--out_squash',dest='out_squash',default='out_squash',
    help= 'the output hdf5 data file out_squash_?????? with an .h5 extension are optional files to which to write raw j2k or hcomp images')
 parser.add_argument('-s','--sum', dest='sum_range', type=int, nargs='?', const=1, default=1,
    help= 'an integer image summing range (1 ...) to apply to the selected images, defaults to 1')
-parser.add_argument('-v','--verbose',dest='verbose',action='store_true', 
+parser.add_argument('-v','--verbose',dest='verbose',action='store_true',
    help= 'provide addtional information')
 parser.add_argument('-V','--version',dest='report_version',action='store_true',
    help= 'report version and version_date')
@@ -915,20 +915,21 @@ try:
     samp_gon = fin['entry']['sample']['goniometer']
     if args['verbose'] == True:
         print('l_bnl_compress.py: entry/sample/goniometer: ', samp_gon)
-        print('                   entry/sample/goniometer[()]: ', samp_gon[()])
+except:
+    print('l_bnl_compress.py: entry/sample/goniometer not found')
+    samp_gon = None
+if samp_gon != None:
     try:
         chi=samp_gon['chi']
         if args['verbose'] == True:
-            print('l_bnl_compress.py: entry/sample/chi: ', chi)
-            print('l_bnl_compress.py: entry/sample/chi[()]: ', chi[()])
+            print('l_bnl_compress.py: entry/sample/goniometer/chi: ', chi)
     except:
         print('l_bnl_compress.py: entry/sample/gonimeter/chi not found')
         chi=None
     try:
         chi_end=samp_gon['chi_end']
         if args['verbose'] == True:
-            print('l_bnl_compress.py: entry/sample/chi_end: ', chi_end)
-            print('l_bnl_compress.py: entry/sample/chi_end[()]: ', chi_end[()])
+            print('l_bnl_compress.py: entry/sample/goniometer/chi_end: ', chi_end)
     except:
         print('l_bnl_compress.py: entry/sample/gonimeter/chi_end not found')
         chi_end=None
@@ -937,8 +938,6 @@ try:
         if args['verbose'] == True:
             print('l_bnl_compress.py: entry/sample/goniometer/chi_range_average: ', \
                 chi_range_average)
-            print('                   entry/sample/goniometer/chi_range_average[()]: ', \
-                chi_range_average[()])
     except:
         print('l_bnl_compress.py: entry/sample/goniometer/chi_range_average not found')
         chi_range_average=None
@@ -947,24 +946,20 @@ try:
         if args['verbose'] == True:
             print('l_bnl_compress.py: entry/sample/goniometer/chi_range_total: ', \
                 chi_range_total)
-            print('                   entry/sample/goniometer/chi_range_total[()]: ', \
-                chi_range_total[()])
     except:
         print('l_bnl_compress.py: entry/sample/goniometer/chi_range_total not found')
         chi_range_total=None
     try:
         kappa=samp_gon['kappa']
         if args['verbose'] == True:
-            print('l_bnl_compress.py: entry/sample/kappa: ', kappa)
-            print('l_bnl_compress.py: entry/sample/kappa[()]: ', kappa[()])
+            print('l_bnl_compress.py: entry/sample/goniometer/kappa: ', kappa)
     except:
         print('l_bnl_compress.py: entry/sample/gonimeter/kappa not found')
         kappa=None
     try:
         kappa_end=samp_gon['kappa_end']
         if args['verbose'] == True:
-            print('l_bnl_compress.py: entry/sample/kappa_end: ', kappa_end)
-            print('l_bnl_compress.py: entry/sample/kappa_end[()]: ', kappa_end[()])
+            print('l_bnl_compress.py: entry/sample/goniometer/kappa_end: ', kappa_end)
     except:
         print('l_bnl_compress.py: entry/sample/gonimeter/kappa_end not found')
         kappa_end=None
@@ -973,8 +968,6 @@ try:
         if args['verbose'] == True:
             print('l_bnl_compress.py: entry/sample/goniometer/kappa_range_average: ', \
                 kappa_range_average)
-            print('                   entry/sample/goniometer/kappa_range_average[()]: ', \
-                kappa_range_average[()])
     except:
         print('l_bnl_compress.py: entry/sample/goniometer/kappa_range_average not found')
         kappa_range_average=None
@@ -983,24 +976,20 @@ try:
         if args['verbose'] == True:
             print('l_bnl_compress.py: entry/sample/goniometer/kappa_range_total: ', \
                 kappa_range_total)
-            print('                   entry/sample/goniometer/kappa_range_total[()]: ', \
-                kappa_range_total[()])
     except:
         print('l_bnl_compress.py: entry/sample/goniometer/kappa_range_total not found')
         kappa_range_total=None
     try:
         angles=samp_gon['omega']
         if args['verbose'] == True:
-            print('l_bnl_compress.py: entry/sample/omega: ', angles)
-            print('l_bnl_compress.py: entry/sample/omega[()]: ', angles[()])
+            print('l_bnl_compress.py: entry/sample/goniometer/omega: ', angles)
     except:
         print('l_bnl_compress.py: entry/sample/gonimeter/omega not found')
         angles=None
     try:
         angles_end=samp_gon['omega_end']
         if args['verbose'] == True:
-            print('l_bnl_compress.py: entry/sample/omega_end: ', angles_end)
-            print('l_bnl_compress.py: entry/sample/omega_end[()]: ', angles_end[()])
+            print('l_bnl_compress.py: entry/sample/goniometer/omega_end: ', angles_end)
     except:
         print('l_bnl_compress.py: entry/sample/gonimeter/omega_end not found')
         angles_end=None
@@ -1008,7 +997,6 @@ try:
         osc_width = samp_gon['omega_range_average']
         if args['verbose'] == True:
             print('l_bnl_compress.py: entry/sample/goniometer/omega_range_average: ', osc_width)
-            print('                   entry/sample/goniometer/omega_range_average[()]: ', osc_width[()])
     except:
         print('l_bnl_compress.py: entry/sample/goniometer not found')
         osc_width = None
@@ -1016,23 +1004,20 @@ try:
         osc_total = samp_gon['omega_range_total']
         if args['verbose'] == True:
             print('l_bnl_compress.py: entry/sample/goniometer/omega_range_total: ', osc_total)
-            print('                   entry/sample/goniometer/omega_range_total[()]: ', osc_total[()])
     except:
         print('l_bnl_compress.py: entry/sample/goniometer/omega_range_total not found')
         osc_total = None
     try:
         phi=samp_gon['phi']
         if args['verbose'] == True:
-            print('l_bnl_compress.py: entry/sample/phi: ', phi)
-            print('l_bnl_compress.py: entry/sample/phi[()]: ', phi[()])
+            print('l_bnl_compress.py: entry/sample/goniometer/phi: ', phi)
     except:
         print('l_bnl_compress.py: entry/sample/gonimeter/phi not found')
         phi=None
     try:
         phi_end=samp_gon['phi_end']
         if args['verbose'] == True:
-            print('l_bnl_compress.py: entry/sample/phi_end: ', phi_end)
-            print('l_bnl_compress.py: entry/sample/phi_end[()]: ', phi_end[()])
+            print('l_bnl_compress.py: entry/sample/goniometer/phi_end: ', phi_end)
     except:
         print('l_bnl_compress.py: entry/sample/gonimeter/phi_end not found')
         phi_end=None
@@ -1041,8 +1026,6 @@ try:
         if args['verbose'] == True:
             print('l_bnl_compress.py: entry/sample/goniometer/phi_range_average: ', \
                 phi_range_average)
-            print('                   entry/sample/goniometer/phi_range_average[()]: ', \
-                phi_range_average[()])
     except:
         print('l_bnl_compress.py: entry/sample/goniometer/phi_range_average not found')
         phi_range_average=None
@@ -1051,14 +1034,9 @@ try:
         if args['verbose'] == True:
             print('l_bnl_compress.py: entry/sample/goniometer/phi_range_total: ', \
                 phi_range_total)
-            print('                   entry/sample/goniometer/phi_range_total[()]: ', \
-                phi_range_total[()])
     except:
         print('l_bnl_compress.py: entry/sample/goniometer/phi_range_total not found')
         phi_range_total=None
-except:
-    print('l_bnl_compress.py: entry/sample/goniometer not found')
-    samp_gon = None
 
 try:
     datagroup=fin['entry']['data']
@@ -1171,7 +1149,9 @@ fout[master]['entry']['instrument'].attrs.create('NX_class',ntstr('NXinstrument'
 fout[master]['entry'].create_group('sample') 
 fout[master]['entry']['sample'].attrs.create('NX_class',ntstr('NXsample'),dtype=ntstrdt('NXsample')) 
 fout[master]['entry']['sample'].create_group('goniometer') 
-fout[master]['entry']['sample']['goniometer'].attrs.create('NX_class',ntstr('NXgoniometer'),dtype=ntstrdt('NXgoniometer')) 
+fout[master]['entry']['sample']['goniometer'].attrs.create('NX_class',ntstr('NXtransformations'),dtype=ntstrdt('NXtransformations'))
+fout[master]['entry']['sample'].create_group('transformations') 
+fout[master]['entry']['sample']['transformations'].attrs.create('NX_class',ntstr('NXtransformations'),dtype=ntstrdt('NXtransformations'))  
 fout[master]['entry']['instrument'].attrs.create('NX_class',ntstr('NXinstrument'),dtype=ntstrdt('NXinstrument'))
 fout[master]['entry']['instrument'].create_group('detector')
 fout[master]['entry']['instrument']['detector'].attrs.create(\
@@ -1322,31 +1302,43 @@ if det_gon != None:
     fout[master]['entry']['instrument']['detector']['goniometer'].attrs.create('NX_class',\
     ntstr('NXgoniometer'),dtype=ntstrdt('NXgoniometer'))
     if det_gon_two_theta != None:
+        newshape = det_gon_two_theta.shape
+        if newshape[0]==nimages:
+            newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
         fout[master]['entry']['instrument']['detector']['goniometer'].create_dataset(\
-        'two_theta',shape=det_gon_two_theta.shape,dtype=det_gon_two_theta.dtype)
+        'two_theta',shape=newshape,dtype=det_gon_two_theta.dtype)
         fout[master]['entry']['instrument']['detector']['goniometer']['two_theta'][0:(int(args['last_image'])-\
         int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
         det_gon_two_theta[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
         xfer_axis_attrs(fout[master]['entry']['instrument']['detector']['goniometer']['two_theta'],\
         det_gon_two_theta)
     if det_gon_two_theta_end != None:
+        newshape = det_gon_two_theta_end.shape
+        if newshape[0]==nimages:
+            newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
         fout[master]['entry']['instrument']['detector']['goniometer'].create_dataset(\
-        'two_theta_end',shape=det_gon_two_theta_end.shape,dtype=det_gon_two_theta_end.dtype)
+        'two_theta_end',shape=newshape,dtype=det_gon_two_theta_end.dtype)
         fout[master]['entry']['instrument']['detector']['goniometer']['two_theta_end'][0:(int(args['last_image'])-\
         int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
         det_gon_two_theta_end[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
         xfer_axis_attrs(fout[master]['entry']['instrument']['detector']['goniometer']['two_theta_end'],\
         det_gon_two_theta_end)
     if det_gon_two_theta_range_average != None:
+        newshape = det_gon_two_theta_range_average.shape
+        if newshape[0]==nimages:
+            newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
         fout[master]['entry']['instrument']['detector']['goniometer'].create_dataset(\
-        'two_theta_range_average',shape=det_gon_two_theta_range_average.shape,dtype=det_gon_two_theta_range_average.dtype)
+        'two_theta_range_average',shape=newshape,dtype=det_gon_two_theta_range_average.dtype)
         fout[master]['entry']['instrument']['detector']['goniometer']['two_theta_range_average'][()]=\
         det_gon_two_theta_range_average[()]*int(args['sum_range'])
         xfer_axis_attrs(fout[master]['entry']['instrument']['detector']['goniometer']['two_theta_range_average'],\
         det_gon_two_theta_range_average)
     if det_gon_two_theta_range_total != None:
+        newshape = det_gon_two_theta_range_total.shape
+        if newshape[0]==nimages:
+            newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
         fout[master]['entry']['instrument']['detector']['goniometer'].create_dataset(\
-        'two_theta_range_total',shape=det_gon_two_theta_range_total.shape,dtype=det_gon_two_theta_range_total.dtype)
+        'two_theta_range_total',shape=newshape,dtype=det_gon_two_theta_range_total.dtype)
         fout[master]['entry']['instrument']['detector']['goniometer']['two_theta_range_total'][()]=\
         det_gon_two_theta_range_total[()]
         xfer_axis_attrs(fout[master]['entry']['instrument']['detector']['goniometer']['two_theta_range_total'],\
@@ -1357,8 +1349,11 @@ if det_nxt != None:
     fout[master]['entry']['instrument']['detector']['transformations'].attrs.create('NX_class',\
     ntstr('NXtransformations'),dtype=ntstrdt('NXtransformations'))
     if det_nxt_translation != None:
+        newshape = det_nxt_translation.shape
+        if newshape[0]==nimages:
+            newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
         fout[master]['entry']['instrument']['detector']['transformations'].create_dataset(\
-        'translation',shape=det_nxt_translation.shape,dtype=det_nxt_translation.dtype)
+        'translation',shape=newshape,dtype=det_nxt_translation.dtype)
         fout[master]['entry']['instrument']['detector']['transformations']['translation'][()]=\
         det_nxt_translation[()]
         xfer_axis_attrs(fout[master]['entry']['instrument']['detector']['transformations']['translation'],\
@@ -1463,8 +1458,11 @@ if beam_incident_wavelength!=None:
 
 
 if chi!=None:
+    newshape = chi.shape
+    if newshape[0]==nimages:
+        newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
     fout[master]['entry']['sample']['goniometer'].create_dataset(\
-    'chi',shape=chi.shape,dtype=chi.dtype) 
+    'chi',shape=newshape,dtype=chi.dtype) 
     fout[master]['entry']['sample']['goniometer']['chi'][0:(int(args['last_image'])-\
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     chi[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
@@ -1472,8 +1470,11 @@ if chi!=None:
         'units',ntstr(chi.attrs['units'].decode('utf8')),\
         dtype=ntstrdt(chi.attrs['units'].decode('utf8')))
 if chi_end!=None:
+    newshape = chi_end.shape
+    if newshape[0]==nimages:
+        newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
     fout[master]['entry']['sample']['goniometer'].create_dataset(\
-    'chi_end',shape=chi_end.shape,dtype=chi_end.dtype)
+    'chi_end',shape=newshape,dtype=chi_end.dtype)
     fout[master]['entry']['sample']['goniometer']['chi_end'][0:(int(args['last_image'])-\
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     chi_end[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
@@ -1497,8 +1498,11 @@ if chi_range_total != None:
         'units',ntstr(chi_range_total.attrs['units'].decode('utf8')),\
         dtype=ntstrdt(chi_range_total.attrs['units'].decode('utf8')))
 if kappa!=None:
+    newshape = kappa.shape
+    if newshape[0]==nimages:
+        newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
     fout[master]['entry']['sample']['goniometer'].create_dataset(\
-    'kappa',shape=kappa.shape,dtype=kappa.dtype) 
+    'kappa',shape=newshape,dtype=kappa.dtype) 
     fout[master]['entry']['sample']['goniometer']['kappa'][0:(int(args['last_image'])-\
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     kappa[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
@@ -1506,8 +1510,11 @@ if kappa!=None:
         'units',ntstr(kappa.attrs['units'].decode('utf8')),\
         dtype=ntstrdt(kappa.attrs['units'].decode('utf8')))
 if kappa_end!=None:
+    newshape = kappa_end.shape
+    if newshape[0]==nimages:
+        newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
     fout[master]['entry']['sample']['goniometer'].create_dataset(\
-    'kappa_end',shape=kappa_end.shape,dtype=kappa_end.dtype)
+    'kappa_end',shape=newshape,dtype=kappa_end.dtype)
     fout[master]['entry']['sample']['goniometer']['kappa_end'][0:(int(args['last_image'])-\
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     kappa_end[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
@@ -1531,8 +1538,12 @@ if kappa_range_total != None:
         'units',ntstr(kappa_range_total.attrs['units'].decode('utf8')),\
         dtype=ntstrdt(kappa_range_total.attrs['units'].decode('utf8')))
 if angles != None:
+    newshape = angles.shape
+    if newshape[0]==nimages:
+        newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
+    print('angles.shape: ',angles.shape)
     fout[master]['entry']['sample']['goniometer'].create_dataset(\
-    'omega',shape=angles.shape,dtype=angles.dtype) 
+    'omega',shape=newshape,dtype=angles.dtype) 
     fout[master]['entry']['sample']['goniometer']['omega'][0:(int(args['last_image'])-\
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     angles[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
@@ -1540,8 +1551,12 @@ if angles != None:
        'units',ntstr(angles.attrs['units'].decode('utf8')),\
        dtype=ntstrdt(angles.attrs['units'].decode('utf8')))
 if angles_end != None:
+    newshape = angles_end.shape
+    if newshape[0]==nimages:
+        newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
+    print('angles_end.shape: ',angles_end.shape)
     fout[master]['entry']['sample']['goniometer'].create_dataset(\
-    'omega_end',shape=angles_end.shape,dtype=angles_end.dtype) 
+    'omega_end',shape=newshape,dtype=angles_end.dtype) 
     fout[master]['entry']['sample']['goniometer']['omega_end'][0:(int(args['last_image'])-\
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     angles_end[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
@@ -1549,24 +1564,31 @@ if angles_end != None:
         'units',ntstr(angles_end.attrs['units'].decode('utf8')),\
         dtype=ntstrdt(angles_end.attrs['units'].decode('utf8')))
 if osc_width != None:
+    newshape = osc_width.shape
+    print('osc_width.shape: ',osc_width.shape)
     fout[master]['entry']['sample']['goniometer'].create_dataset(\
-        'omega_range_average',shape=osc_width.shape,dtype=osc_width.dtype)
+        'omega_range_average',shape=newshape,dtype=osc_width.dtype)
     fout[master]['entry']['sample']['goniometer']['omega_range_average'][()]=\
         osc_width[()]*int(args['sum_range'])
     fout[master]['entry']['sample']['goniometer']['omega_range_average'].attrs.create(\
         'units',ntstr(osc_width.attrs['units'].decode('utf8')),\
         dtype=ntstrdt(osc_width.attrs['units'].decode('utf8')))
 if osc_total != None:
+    newshape = osc_total.shape
+    print('osc_total.shape: ',osc_total.shape)
     fout[master]['entry']['sample']['goniometer'].create_dataset(\
-        'omega_range_total',shape=osc_total.shape,dtype=osc_total.dtype)
+        'omega_range_total',shape=newshape,dtype=osc_total.dtype)
     fout[master]['entry']['sample']['goniometer']['omega_range_total'][()]=\
         osc_total[()]
     fout[master]['entry']['sample']['goniometer']['omega_range_total'].attrs.create(\
         'units',ntstr(osc_total.attrs['units'].decode('utf8')),\
         dtype=ntstrdt(osc_total.attrs['units'].decode('utf8')))
 if phi!=None:
+    newshape = phi.shape
+    if newshape[0]==nimages:
+        newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
     fout[master]['entry']['sample']['goniometer'].create_dataset(\
-    'phi',shape=phi.shape,dtype=phi.dtype) 
+    'phi',shape=newshape,dtype=phi.dtype) 
     fout[master]['entry']['sample']['goniometer']['phi'][0:(int(args['last_image'])-\
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     phi[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
@@ -1574,8 +1596,11 @@ if phi!=None:
         'units',ntstr(phi.attrs['units'].decode('utf8')),\
         dtype=ntstrdt(phi.attrs['units'].decode('utf8')))
 if phi_end!=None:
+    newshape = phi_end.shape
+    if newshape[0]==nimages:
+        newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
     fout[master]['entry']['sample']['goniometer'].create_dataset(\
-    'phi_end',shape=phi_end.shape,dtype=phi_end.dtype)
+    'phi_end',shape=newshape,dtype=phi_end.dtype)
     fout[master]['entry']['sample']['goniometer']['phi_end'][0:(int(args['last_image'])-\
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     phi_end[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
@@ -1603,8 +1628,11 @@ if nxt_chi!=None:
         fout[master]['entry']['sample'].create_group('transformations')
         fout[master]['entry']['sample']['transformations'].\
             attrs.create('NX_class',ntstr('NXtransformations'),dtype=ntstrdt('NXtransformations'))
+    newshape = nxt_chi.shape
+    if newshape[0]==nimages:
+        newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
     fout[master]['entry']['sample']['transformations'].create_dataset(\
-    'chi',shape=nxt_chi.shape,dtype=nxt_chi.dtype)
+    'chi',shape=newshape,dtype=nxt_chi.dtype)
     fout[master]['entry']['sample']['transformations']['chi'][0:(int(args['last_image'])-\
         int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
         nxt_chi[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
@@ -1616,8 +1644,11 @@ if nxt_chi_end!=None:
         fout[master]['entry']['sample'].create_group('transformations')
         fout[master]['entry']['sample']['transformations'].\
             attrs.create('NX_class',ntstr('NXtransformations'),dtype=ntstrdt('NXtransformations'))
+    newshape = nxt_chi_end.shape
+    if newshape[0]==nimages:
+        newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
     fout[master]['entry']['sample']['transformations'].create_dataset(\
-    'chi_end',shape=nxt_chi_end.shape,dtype=nxt_chi_end.dtype)
+    'chi_end',shape=newshape,dtype=nxt_chi_end.dtype)
     fout[master]['entry']['sample']['transformations']['chi_end'][0:(int(args['last_image'])-\
         int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
         nxt_chi_end[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
@@ -1653,8 +1684,11 @@ if nxt_omega!=None:
         fout[master]['entry']['sample'].create_group('transformations')
         fout[master]['entry']['sample']['transformations'].\
             attrs.create('NX_class',ntstr('NXtransformations'),dtype=ntstrdt('NXtransformations'))
+    newshape = nxt_omega.shape
+    if newshape[0]==nimages:
+        newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
     fout[master]['entry']['sample']['transformations'].create_dataset(\
-    'omega',shape=nxt_omega.shape,dtype=nxt_omega.dtype)
+    'omega',shape=newshape,dtype=nxt_omega.dtype)
     fout[master]['entry']['sample']['transformations']['omega'][0:(int(args['last_image'])-\
         int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
         nxt_omega[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
@@ -1679,8 +1713,11 @@ if nxt_omega_end!=None:
         fout[master]['entry']['sample'].create_group('transformations')
         fout[master]['entry']['sample']['transformations'].\
             attrs.create('NX_class',ntstr('NXtransformations'),dtype=ntstrdt('NXtransformations'))
+    newshape = nxt_omega_end.shape
+    if newshape[0]==nimages:
+        newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
     fout[master]['entry']['sample']['transformations'].create_dataset(\
-    'omega_end',shape=nxt_omega_end.shape,dtype=nxt_omega_end.dtype)
+    'omega_end',shape=newshape,dtype=nxt_omega_end.dtype)
     fout[master]['entry']['sample']['transformations']['omega_end'][0:(int(args['last_image'])-\
         int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
         nxt_omega_end[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
@@ -1728,8 +1765,11 @@ if nxt_phi!=None:
         fout[master]['entry']['sample'].create_group('transformations')
         fout[master]['entry']['sample']['transformations'].\
             attrs.create('NX_class',ntstr('NXtransformations'),dtype=ntstrdt('NXtransformations'))
+    newshape = nxt_phi.shape
+    if newshape[0]==nimages:
+        newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
     fout[master]['entry']['sample']['transformations'].create_dataset(\
-    'phi',shape=nxt_phi.shape,dtype=nxt_phi.dtype)
+    'phi',shape=newshape,dtype=nxt_phi.dtype)
     fout[master]['entry']['sample']['transformations']['phi'][0:(int(args['last_image'])-\
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     nxt_phi[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
@@ -1741,8 +1781,11 @@ if nxt_phi_end!=None:
         fout[master]['entry']['sample'].create_group('transformations')
         fout[master]['entry']['sample']['transformations'].\
             attrs.create('NX_class',ntstr('NXtransformations'),dtype=ntstrdt('NXtransformations'))
+    newshape = nxt_phi_end.shape
+    if newshape[0]==nimages:
+        newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
     fout[master]['entry']['sample']['transformations'].create_dataset(\
-    'phi_end',shape=nxt_phi_end.shape,dtype=nxt_phi_end.dtype)
+    'phi_end',shape=newshape,dtype=nxt_phi_end.dtype)
     fout[master]['entry']['sample']['transformations']['phi_end'][0:(int(args['last_image'])-\
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     nxt_phi_end[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
@@ -1754,6 +1797,9 @@ if nxt_kappa!=None:
         fout[master]['entry']['sample'].create_group('transformations')
         fout[master]['entry']['sample']['transformations'].\
             attrs.create('NX_class',ntstr('NXtransformations'),dtype=ntstrdt('NXtransformations'))
+    newshape = nxt_kappa.shape
+    if newshape[0]==nimages:
+        newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
     fout[master]['entry']['sample']['transformations'].create_dataset(\
     'kappa',shape=nxt_kappa.shape,dtype=nxt_kappa.dtype)
     fout[master]['entry']['sample']['transformations']['kappa'][0:(int(args['last_image'])-\
@@ -1767,8 +1813,11 @@ if nxt_kappa_end!=None:
         fout[master]['entry']['sample'].create_group('transformations')
         fout[master]['entry']['sample']['transformations'].\
             attrs.create('NX_class',ntstr('NXtransformations'),dtype=ntstrdt('NXtransformations'))
+    newshape = nxt_kappa_end.shape
+    if newshape[0]==nimages:
+        newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
     fout[master]['entry']['sample']['transformations'].create_dataset(\
-    'kappa_end',shape=nxt_kappa_end.shape,dtype=nxt_kappa_end.dtype)
+    'kappa_end',shape=newshape,dtype=nxt_kappa_end.dtype)
     fout[master]['entry']['sample']['transformations']['kappa_end'][0:(int(args['last_image'])-\
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     nxt_kappa_end[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
@@ -1792,8 +1841,11 @@ if nxt_translation!=None:
         fout[master]['entry']['sample'].create_group('transformations')
         fout[master]['entry']['sample']['transformations'].\
             attrs.create('NX_class',ntstr('NXtransformations'),dtype=ntstrdt('NXtransformations'))
+    newshape = nxt_translation.shape
+    if newshape[0]==nimages:
+        newshape=((newshape[0]+int(args['sum_range'])-1)/int(args['sum_range']),)+newshape[1:]
     fout[master]['entry']['sample']['transformations'].create_dataset(\
-    'translation',shape=nxt_translation.shape,dtype=nxt_translation.dtype)
+    'translation',shape=newshape,dtype=nxt_translation.dtype)
     fout[master]['entry']['sample']['transformations']['translation'][0:(int(args['last_image'])-\
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     nxt_translation[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
@@ -1957,7 +2009,7 @@ for nout_block in range(1,out_number_of_blocks+1):
     if nj2k_img > 0:
         print('l_bnl_compress.py: j2k avg compressed imgage size: ', int(.5+j2k_tot_compimgsize/nj2k_img))
     fout[master]['entry']['data']["data_"+str(nout_block).zfill(6)] \
-        = h5py.ExternalLink(args['out_file']+"_"+str(nout_block).zfill(6)+".h5", "/entry/data/data")
+        = h5py.ExternalLink(os.path.basename(args['out_file'])+"_"+str(nout_block).zfill(6)+".h5", "/entry/data/data")
     if args['out_squash'] != None:
         fout[master]['entry']['data']["squash_"+str(nout_block).zfill(6)] \
         = h5py.ExternalLink(args['out_squash']+"_"+str(nout_block).zfill(6)+".h5", "/entry/data")
