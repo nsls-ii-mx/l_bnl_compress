@@ -140,14 +140,14 @@ def xfer_axis_attrs(dst,src):
     if src != None:
         mykeys=src.attrs.keys()
         if 'units' in mykeys:
-            dst.attrs.create('units',ntstr(src.attrs['units'].decode('utf8')),\
-            dtype=ntstrdt(src.attrs['units'].decode('utf8')))
+            dst.attrs.create('units',ntstr(src.attrs['units']),\
+            dtype=ntstrdt(src.attrs['units']))
         if 'depends_on' in mykeys:
-            dst.attrs.create('depends_on',ntstr(src.attrs['depends_on'].decode('utf8')),\
-            dtype=ntstrdt(src.attrs['depends_on'].decode('utf8')))
+            dst.attrs.create('depends_on',ntstr(src.attrs['depends_on']),\
+            dtype=ntstrdt(src.attrs['depends_on']))
         if 'transformation_type' in mykeys:
-            dst.attrs.create('transformation_type',ntstr(src.attrs['transformation_type'].decode('utf8')),\
-            dtype=ntstrdt(src.attrs['transformation_type'].decode('utf8')))
+            dst.attrs.create('transformation_type',ntstr(src.attrs['transformation_type']),\
+            dtype=ntstrdt(src.attrs['transformation_type']))
         if 'vector' in mykeys:
             dst.attrs.create('vector',src.attrs['vector'],\
             dtype=src.attrs['vector'].dtype)
@@ -164,13 +164,13 @@ def bin(old_image,bin_range,satval):
     blocks, clipping values between 0 and satval.  If bin_range does not divide
     the original dimensions exactly, the old_image is padded with zeros.
     '''
-
-    if bin_range < 2:
-        return (np.asarray(old_image,dtype='i2')).clip(0,satval)
     s=old_image.shape
     if len(s) != 2:
         print('l_bnl_compress.py: invalid image shape for 2D binning')
         return None
+    new_image = np.maximum(old_image,0).astype(np.uint16)
+    if bin_range < 2:
+        return new_image.clip(0,satval)
     sy=s[0]
     nsy=int(sy+bin_range-1)//bin_range
     ymargin=0
@@ -182,12 +182,14 @@ def bin(old_image,bin_range,satval):
     if nsx*bin_range > sx:
         xmargin=bin_range-(sx%bin_range)
     if ((xmargin > 0) or (ymargin > 0)):
-        new_image=np.clip(np.pad(np.asarray(old_image,dtype='i2'),((0,ymargin),(0,xmargin)),'constant',constant_values=((0,0),(0,0))),0,satval)
+        new_image=np.clip(np.pad(np.asarray(new_image,dtype='u2'),((0,ymargin),(0,xmargin)),'constant',constant_values=((0,0),(0,0))),0,satval)
     else:
-        new_image=np.clip(np.asarray(old_image,dtype='i2'),0,satval)
-    new_image=(np.asarray(new_image,dtype='i2')).clip(0,satval)
+        new_image=np.clip(np.asarray(new_image,dtype='u2'),0,satval)
+    new_image=(np.asarray(new_image,dtype='u2')).clip(0,satval)
     new_image=np.round(ski.measure.block_reduce(new_image,(bin_range,bin_range),np.sum))
-    new_image=np.asarray(np.clip(new_image,0,satval),dtype='i2')
+    new_image=np.asarray(np.clip(new_image,0,satval),dtype='u2')
+    if args['verbose']==True:
+        print('converted with bin ',s,' to ',new_image.shape,' with dtype u2')
     return new_image
 
 
@@ -1087,14 +1089,19 @@ for image in range(args['first_image'],(args['last_image'])+1,args['sum_range'])
     lim_image=image+int(args['sum_range'])
     if lim_image > args['last_image']+1:
         lim_image = args['last_image']+1
+    if args['verbose']==True:
+        print('Adding images from ',image,' to ',lim_image)
     prev_out=None
     for cur_image in range(image,lim_image):
-        print('image, (block,offset): ',cur_image,\
-          conv_image_to_block_offset(cur_image,number_per_block))
+        if args['verbose']==True:
+            print('image, (block,offset): ',cur_image,\
+              conv_image_to_block_offset(cur_image,number_per_block))
         cur_source=conv_image_to_block_offset(cur_image,number_per_block)
         cur_source_img_block='data_'+str(cur_source[0]+block_start).zfill(6)
         cur_source_img_imgno=cur_source[1]
         cur_source=datagroup[cur_source_img_block][cur_source_img_imgno,:,:]
+        if args['verbose']==True:
+            print('image input shape ',cur_source.shape)
         print('cur_source_img_block: ', cur_source_img_block)
         print('cur_source_img_imgno: ', cur_source_img_imgno)
         if args['bin_range'] > 1:
@@ -1105,11 +1112,10 @@ for image in range(args['first_image'],(args['last_image'])+1,args['sum_range'])
             prev_out = (np.asarray(cur_source,dtype='i2')).clip(0,satval)
     new_nimage = new_nimage+1
     new_images[new_nimage]=prev_out
+    if args['verbose']==True:
+        print('image output shape ',new_nimage,' ',new_images[new_nimage].shape)
 
-if args['verbose'] == True:
-    print('new_nimage: ', new_nimage)
-    print('cur_source: ',cur_source)
-    print('cur_source.shape: ', cur_source.shape)
+
 if (args['data_block_size'] == None) or (args['data_block_size'] < 2):
     args['data_block_size'] = 1
 out_number_per_block = args['data_block_size']
@@ -1193,52 +1199,52 @@ fout[master]['entry']['instrument']['detector'].create_dataset(\
 fout[master]['entry']['instrument']['detector']['sensor_thickness'][()]=\
     thickness[()]
 fout[master]['entry']['instrument']['detector']['sensor_thickness'].attrs.create(\
-    'units',ntstr(thickness.attrs['units'].decode('utf8')),dtype=ntstrdt(thickness.attrs['units'].decode('utf8')))
+    'units',ntstr(thickness.attrs['units']),dtype=ntstrdt(thickness.attrs['units']))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'beam_center_x',shape=beamx.shape,dtype=beamx.dtype)
 fout[master]['entry']['instrument']['detector']['beam_center_x'][()]=\
     beamx[()]/int(args['bin_range'])
 fout[master]['entry']['instrument']['detector']['beam_center_x'].attrs.create(\
-    'units',ntstr(beamx.attrs['units'].decode('utf8')),dtype=ntstrdt(beamx.attrs['units'].decode('utf8')))
+    'units',ntstr(beamx.attrs['units']),dtype=ntstrdt(beamx.attrs['units']))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'beam_center_y',shape=beamy.shape,dtype=beamy.dtype)
 fout[master]['entry']['instrument']['detector']['beam_center_y'][()]\
     =beamy[()]/int(args['bin_range'])
 fout[master]['entry']['instrument']['detector']['beam_center_y'].attrs.create(\
-   'units',ntstr(beamy.attrs['units'].decode('utf8')),dtype=ntstrdt(beamy.attrs['units'].decode('utf8')))
+   'units',ntstr(beamy.attrs['units']),dtype=ntstrdt(beamy.attrs['units']))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'count_time',shape=count_time.shape,dtype=count_time.dtype)
 fout[master]['entry']['instrument']['detector']['count_time'][()]=\
     count_time[()]*int(args['sum_range'])
 fout[master]['entry']['instrument']['detector']['count_time'].attrs.create(\
-    'units',ntstr(count_time.attrs['units'].decode('utf8')),dtype=ntstrdt(count_time.attrs['units'].decode('utf8')))
+    'units',ntstr(count_time.attrs['units']),dtype=ntstrdt(count_time.attrs['units']))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'detector_distance',shape=distance.shape,dtype=distance.dtype)
 fout[master]['entry']['instrument']['detector']['detector_distance'][()]=\
     distance[()]
 fout[master]['entry']['instrument']['detector']['detector_distance'].attrs.create(\
-    'units',ntstr(distance.attrs['units'].decode('utf8')),dtype=ntstrdt(distance.attrs['units'].decode('utf8')))
+    'units',ntstr(distance.attrs['units']),dtype=ntstrdt(distance.attrs['units']))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'frame_time',shape=frame_time.shape,dtype=frame_time.dtype)
 fout[master]['entry']['instrument']['detector']['frame_time'][()]=\
     frame_time[()]*int(args['sum_range'])
 fout[master]['entry']['instrument']['detector']['frame_time'].attrs.create(\
-    'units',ntstr(frame_time.attrs['units'].decode('utf8')),\
-    dtype=ntstrdt(frame_time.attrs['units'].decode('utf8')))
+    'units',ntstr(frame_time.attrs['units']),\
+    dtype=ntstrdt(frame_time.attrs['units']))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'x_pixel_size',shape=pixelsizex.shape,dtype=pixelsizex.dtype)
 fout[master]['entry']['instrument']['detector']['x_pixel_size'][()]=\
     pixelsizex[()]*int(args['sum_range'])
 fout[master]['entry']['instrument']['detector']['x_pixel_size'].attrs.create(\
-    'units',ntstr(pixelsizex.attrs['units'].decode('utf8')),\
-    dtype=ntstrdt(pixelsizex.attrs['units'].decode('utf8')))
+    'units',ntstr(pixelsizex.attrs['units']),\
+    dtype=ntstrdt(pixelsizex.attrs['units']))
 fout[master]['entry']['instrument']['detector'].create_dataset(\
     'y_pixel_size',shape=pixelsizey.shape,dtype=pixelsizey.dtype)
 fout[master]['entry']['instrument']['detector']['y_pixel_size'][()]=\
     pixelsizey[()]*int(args['sum_range'])
 fout[master]['entry']['instrument']['detector']['y_pixel_size'].attrs.create(\
-    'units',ntstr(pixelsizey.attrs['units'].decode('utf8')),\
-    dtype=ntstrdt(pixelsizey.attrs['units'].decode('utf8')))
+    'units',ntstr(pixelsizey.attrs['units']),\
+    dtype=ntstrdt(pixelsizey.attrs['units']))
 if pixel_mask!=None:
     new_pixel_mask=conv_pixel_mask(pixel_mask,int(args['bin_range']))
     fout[master]['entry']['instrument']['detector'].create_dataset(\
@@ -1432,7 +1438,7 @@ if instrument_wavelength!=None:
     fout[master]['entry']['instrument']['beam']['wavelength'][()]=instrument_wavelength[()]
     if 'units' in instrument_wavelength.attrs.keys():
         fout[master]['entry']['instrument']['beam']['wavelength'].attrs.create('units',\
-            instrument_wavelength.attrs['units'].decode('utf8'))
+            instrument_wavelength.attrs['units'])
 if monochromater_wavelength!=None:
     if not ('monochromater' in fout[master]['entry']['instrument'].keys()):
         fout[master]['entry']['instrument'].create_group('monochromater')
@@ -1443,7 +1449,7 @@ if monochromater_wavelength!=None:
     fout[master]['entry']['instrument']['monochromater']['wavelength'][()]=monochromater_wavelength[()]
     if 'units' in monochromater_wavelength.attrs.keys():
         fout[master]['entry']['instrument']['monochromater']['wavelength'].attrs.create('units',\
-            monochromater_wavelength.attrs['units'].decode('utf8'))
+            monochromater_wavelength.attrs['units'])
 if beam_incident_wavelength!=None:
     if not ('beam' in fout[master]['entry']['instrument'].keys()):
         fout[master]['entry']['instrument'].create_group('beam')
@@ -1454,7 +1460,7 @@ if beam_incident_wavelength!=None:
     fout[master]['entry']['instrument']['beam']['incident_wavelength'][()]=beam_incident_wavelength[()]
     if 'units' in beam_incident_wavelength.attrs.keys():
         fout[master]['entry']['instrument']['beam']['incident_wavelength'].attrs.create('units',\
-            beam_incident_wavelength.attrs['units'].decode('utf8'))
+            beam_incident_wavelength.attrs['units'])
 
 
 if chi!=None:
@@ -1467,8 +1473,8 @@ if chi!=None:
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     chi[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
     fout[master]['entry']['sample']['goniometer']['chi'].attrs.create(\
-        'units',ntstr(chi.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(chi.attrs['units'].decode('utf8')))
+        'units',ntstr(chi.attrs['units']),\
+        dtype=ntstrdt(chi.attrs['units']))
 if chi_end!=None:
     newshape = chi_end.shape
     if newshape[0]==nimages:
@@ -1479,24 +1485,24 @@ if chi_end!=None:
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     chi_end[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
     fout[master]['entry']['sample']['goniometer']['chi_end'].attrs.create(\
-        'units',ntstr(chi_end.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(chi_end.attrs['units'].decode('utf8')))
+        'units',ntstr(chi_end.attrs['units']),\
+        dtype=ntstrdt(chi_end.attrs['units']))
 if chi_range_average != None:
     fout[master]['entry']['sample']['goniometer'].create_dataset(\
     'chi_range_average',shape=chi_range_average.shape,dtype=chi_range_average.dtype)
     fout[master]['entry']['sample']['goniometer']['chi_range_average'][()]=\
     chi_range_average[()]*int(args['sum_range'])
     fout[master]['entry']['sample']['goniometer']['chi_range_average'].attrs.create(\
-        'units',ntstr(chi_range_average.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(chi_range_average.attrs['units'].decode('utf8')))
+        'units',ntstr(chi_range_average.attrs['units']),\
+        dtype=ntstrdt(chi_range_average.attrs['units']))
 if chi_range_total != None:
     fout[master]['entry']['sample']['goniometer'].create_dataset(\
     'chi_range_total',shape=chi_range_average.shape,dtype=chi_range_total.dtype)
     fout[master]['entry']['sample']['goniometer']['chi_range_total'][()]=\
     chi_range_average[()]
     fout[master]['entry']['sample']['goniometer']['chi_range_total'].attrs.create(\
-        'units',ntstr(chi_range_total.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(chi_range_total.attrs['units'].decode('utf8')))
+        'units',ntstr(chi_range_total.attrs['units']),\
+        dtype=ntstrdt(chi_range_total.attrs['units']))
 if kappa!=None:
     newshape = kappa.shape
     if newshape[0]==nimages:
@@ -1507,8 +1513,8 @@ if kappa!=None:
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     kappa[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
     fout[master]['entry']['sample']['goniometer']['kappa'].attrs.create(\
-        'units',ntstr(kappa.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(kappa.attrs['units'].decode('utf8')))
+        'units',ntstr(kappa.attrs['units']),\
+        dtype=ntstrdt(kappa.attrs['units']))
 if kappa_end!=None:
     newshape = kappa_end.shape
     if newshape[0]==nimages:
@@ -1519,24 +1525,24 @@ if kappa_end!=None:
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     kappa_end[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
     fout[master]['entry']['sample']['goniometer']['kappa_end'].attrs.create(\
-        'units',ntstr(kappa_end.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(kappa_end.attrs['units'].decode('utf8')))
+        'units',ntstr(kappa_end.attrs['units']),\
+        dtype=ntstrdt(kappa_end.attrs['units']))
 if kappa_range_average != None:
     fout[master]['entry']['sample']['goniometer'].create_dataset(\
     'kappa_range_average',shape=kappa_range_average.shape,dtype=kappa_range_average.dtype)
     fout[master]['entry']['sample']['goniometer']['kappa_range_average'][()]=\
     kappa_range_average[()]*int(args['sum_range'])
     fout[master]['entry']['sample']['goniometer']['kappa_range_average'].attrs.create(\
-        'units',ntstr(kappa_range_average.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(kappa_range_average.attrs['units'].decode('utf8')))
+        'units',ntstr(kappa_range_average.attrs['units']),\
+        dtype=ntstrdt(kappa_range_average.attrs['units']))
 if kappa_range_total != None:
     fout[master]['entry']['sample']['goniometer'].create_dataset(\
     'kappa_range_total',shape=kappa_range_total.shape,dtype=kappa_range_total.dtype)
     fout[master]['entry']['sample']['goniometer']['kappa_range_total'][()]=\
     kappa_range_total[()]
     fout[master]['entry']['sample']['goniometer']['kappa_range_total'].attrs.create(\
-        'units',ntstr(kappa_range_total.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(kappa_range_total.attrs['units'].decode('utf8')))
+        'units',ntstr(kappa_range_total.attrs['units']),\
+        dtype=ntstrdt(kappa_range_total.attrs['units']))
 if angles != None:
     newshape = angles.shape
     if newshape[0]==nimages:
@@ -1548,8 +1554,8 @@ if angles != None:
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     angles[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
     fout[master]['entry']['sample']['goniometer']['omega'].attrs.create(\
-       'units',ntstr(angles.attrs['units'].decode('utf8')),\
-       dtype=ntstrdt(angles.attrs['units'].decode('utf8')))
+       'units',ntstr(angles.attrs['units']),\
+       dtype=ntstrdt(angles.attrs['units']))
 if angles_end != None:
     newshape = angles_end.shape
     if newshape[0]==nimages:
@@ -1561,8 +1567,8 @@ if angles_end != None:
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     angles_end[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
     fout[master]['entry']['sample']['goniometer']['omega_end'].attrs.create(\
-        'units',ntstr(angles_end.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(angles_end.attrs['units'].decode('utf8')))
+        'units',ntstr(angles_end.attrs['units']),\
+        dtype=ntstrdt(angles_end.attrs['units']))
 if osc_width != None:
     newshape = osc_width.shape
     print('osc_width.shape: ',osc_width.shape)
@@ -1571,8 +1577,8 @@ if osc_width != None:
     fout[master]['entry']['sample']['goniometer']['omega_range_average'][()]=\
         osc_width[()]*int(args['sum_range'])
     fout[master]['entry']['sample']['goniometer']['omega_range_average'].attrs.create(\
-        'units',ntstr(osc_width.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(osc_width.attrs['units'].decode('utf8')))
+        'units',ntstr(osc_width.attrs['units']),\
+        dtype=ntstrdt(osc_width.attrs['units']))
 if osc_total != None:
     newshape = osc_total.shape
     print('osc_total.shape: ',osc_total.shape)
@@ -1581,8 +1587,8 @@ if osc_total != None:
     fout[master]['entry']['sample']['goniometer']['omega_range_total'][()]=\
         osc_total[()]
     fout[master]['entry']['sample']['goniometer']['omega_range_total'].attrs.create(\
-        'units',ntstr(osc_total.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(osc_total.attrs['units'].decode('utf8')))
+        'units',ntstr(osc_total.attrs['units']),\
+        dtype=ntstrdt(osc_total.attrs['units']))
 if phi!=None:
     newshape = phi.shape
     if newshape[0]==nimages:
@@ -1593,8 +1599,8 @@ if phi!=None:
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     phi[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
     fout[master]['entry']['sample']['goniometer']['phi'].attrs.create(\
-        'units',ntstr(phi.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(phi.attrs['units'].decode('utf8')))
+        'units',ntstr(phi.attrs['units']),\
+        dtype=ntstrdt(phi.attrs['units']))
 if phi_end!=None:
     newshape = phi_end.shape
     if newshape[0]==nimages:
@@ -1605,24 +1611,24 @@ if phi_end!=None:
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     phi_end[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
     fout[master]['entry']['sample']['goniometer']['phi_end'].attrs.create(\
-        'units',ntstr(phi_end.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(phi_end.attrs['units'].decode('utf8')))
+        'units',ntstr(phi_end.attrs['units']),\
+        dtype=ntstrdt(phi_end.attrs['units']))
 if phi_range_average != None:
     fout[master]['entry']['sample']['goniometer'].create_dataset(\
     'phi_range_average',shape=phi_range_average.shape,dtype=phi_range_average.dtype)
     fout[master]['entry']['sample']['goniometer']['phi_range_average'][()]=\
     phi_range_average[()]*int(args['sum_range'])
     fout[master]['entry']['sample']['goniometer']['phi_range_average'].attrs.create(\
-        'units',ntstr(phi_range_average.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(phi_range_average.attrs['units'].decode('utf8')))
+        'units',ntstr(phi_range_average.attrs['units']),\
+        dtype=ntstrdt(phi_range_average.attrs['units']))
 if phi_range_total != None:
     fout[master]['entry']['sample']['goniometer'].create_dataset(\
     'phi_range_total',shape=phi_range_total.shape,dtype=phi_range_total.dtype)
     fout[master]['entry']['sample']['goniometer']['phi_range_total'][()]=\
     phi_range_total[()]
     fout[master]['entry']['sample']['goniometer']['phi_range_total'].attrs.create(\
-        'units',ntstr(phi_range_total.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(phi_range_total.attrs['units'].decode('utf8')))
+        'units',ntstr(phi_range_total.attrs['units']),\
+        dtype=ntstrdt(phi_range_total.attrs['units']))
 if nxt_chi!=None:
     if not ('transformations' in  fout[master]['entry']['sample'].keys()):
         fout[master]['entry']['sample'].create_group('transformations')
@@ -1637,8 +1643,8 @@ if nxt_chi!=None:
         int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
         nxt_chi[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
     fout[master]['entry']['sample']['transformations']['chi'].attrs.create(\
-        'units',ntstr(nxt_chi.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(nxt_chi.attrs['units'].decode('utf8')))
+        'units',ntstr(nxt_chi.attrs['units']),\
+        dtype=ntstrdt(nxt_chi.attrs['units']))
 if nxt_chi_end!=None:
     if not ('transformations' in  fout[master]['entry']['sample'].keys()):
         fout[master]['entry']['sample'].create_group('transformations')
@@ -1653,8 +1659,8 @@ if nxt_chi_end!=None:
         int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
         nxt_chi_end[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
     fout[master]['entry']['sample']['transformations']['chi_end'].attrs.create(\
-        'units',ntstr(nxt_chi_end.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(nxt_chi_end.attrs['units'].decode('utf8')))
+        'units',ntstr(nxt_chi_end.attrs['units']),\
+        dtype=ntstrdt(nxt_chi_end.attrs['units']))
 if nxt_chi_range_average != None:
     if not ('transformations' in  fout[master]['entry']['sample'].keys()):
         fout[master]['entry']['sample'].create_group('transformations')
@@ -1665,8 +1671,8 @@ if nxt_chi_range_average != None:
     fout[master]['entry']['sample']['transformations']['chi_range_average'][()]=\
     nxt_chi_range_average[()]*int(args['sum_range'])
     fout[master]['entry']['sample']['transformations']['chi_range_average'].attrs.create(\
-        'units',ntstr(nxt_chi_range_average.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(nxt_chi_range_average.attrs['units'].decode('utf8')))
+        'units',ntstr(nxt_chi_range_average.attrs['units']),\
+        dtype=ntstrdt(nxt_chi_range_average.attrs['units']))
 if nxt_chi_range_total != None:
     if not ('transformations' in  fout[master]['entry']['sample'].keys()):
         fout[master]['entry']['sample'].create_group('transformations')
@@ -1677,8 +1683,8 @@ if nxt_chi_range_total != None:
     fout[master]['entry']['sample']['transformations']['chi_range_total'][()]=\
     nxt_chi_range_total[()]
     fout[master]['entry']['sample']['transformations']['chi_range_total'].attrs.create(\
-        'units',ntstr(nxt_chi_range_total.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(nxt_chi_range_total.attrs['units'].decode('utf8')))
+        'units',ntstr(nxt_chi_range_total.attrs['units']),\
+        dtype=ntstrdt(nxt_chi_range_total.attrs['units']))
 if nxt_omega!=None:
     if not ('transformations' in  fout[master]['entry']['sample'].keys()):
         fout[master]['entry']['sample'].create_group('transformations')
@@ -1694,16 +1700,16 @@ if nxt_omega!=None:
         nxt_omega[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
     if 'depends_on' in nxt_omega.attrs.keys():
         fout[master]['entry']['sample']['transformations']['omega']\
-            .attrs.create('depends_on',nxt_omega.attrs['depends_on'].decode('utf8'))
+            .attrs.create('depends_on',nxt_omega.attrs['depends_on'])
     if 'offset' in nxt_omega.attrs.keys():
         fout[master]['entry']['sample']['transformations']['omega']\
             .attrs.create('offset',nxt_omega.attrs['offset'])
     if 'transformation_type' in nxt_omega.attrs.keys():
         fout[master]['entry']['sample']['transformations']['omega']\
-            .attrs.create('transformation_type',nxt_omega.attrs['transformation_type'].decode('utf8'))
+            .attrs.create('transformation_type',nxt_omega.attrs['transformation_type'])
     if 'units' in nxt_omega.attrs.keys():
         fout[master]['entry']['sample']['transformations']['omega']\
-            .attrs.create('units',nxt_omega.attrs['units'].decode('utf8'))
+            .attrs.create('units',nxt_omega.attrs['units'])
     if 'vector' in nxt_omega.attrs.keys():
         fout[master]['entry']['sample']['transformations']['omega']\
             .attrs.create('vector',nxt_omega.attrs['vector'])
@@ -1722,8 +1728,8 @@ if nxt_omega_end!=None:
         int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
         nxt_omega_end[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
     fout[master]['entry']['sample']['transformations']['omega_end'].attrs.create(\
-        'units',ntstr(nxt_omega_end.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(nxt_omega_end.attrs['units'].decode('utf8')))
+        'units',ntstr(nxt_omega_end.attrs['units']),\
+        dtype=ntstrdt(nxt_omega_end.attrs['units']))
 if nxt_omega_range_average != None:
     if not ('transformations' in  fout[master]['entry']['sample'].keys()):
         fout[master]['entry']['sample'].create_group('transformations')
@@ -1734,8 +1740,8 @@ if nxt_omega_range_average != None:
     fout[master]['entry']['sample']['transformations']['omega_range_average'][()]=\
     nxt_omega_range_average[()]*int(args['sum_range'])
     fout[master]['entry']['sample']['transformations']['omega_range_average'].attrs.create(\
-        'units',ntstr(nxt_omega_range_average.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(nxt_omega_range_average.attrs['units'].decode('utf8')))
+        'units',ntstr(nxt_omega_range_average.attrs['units']),\
+        dtype=ntstrdt(nxt_omega_range_average.attrs['units']))
 if nxt_omega_range_total != None:
     if not ('transformations' in  fout[master]['entry']['sample'].keys()):
         fout[master]['entry']['sample'].create_group('transformations')
@@ -1746,8 +1752,8 @@ if nxt_omega_range_total != None:
     fout[master]['entry']['sample']['transformations']['omega_range_total'][()]=\
     nxt_omega_range_total[()]
     fout[master]['entry']['sample']['transformations']['omega_range_total'].attrs.create(\
-        'units',ntstr(nxt_omega_range_total.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(nxt_omega_range_total.attrs['units'].decode('utf8')))
+        'units',ntstr(nxt_omega_range_total.attrs['units']),\
+        dtype=ntstrdt(nxt_omega_range_total.attrs['units']))
 if nxt_phi_range_average != None:
     if not ('transformations' in  fout[master]['entry']['sample'].keys()):
         fout[master]['entry']['sample'].create_group('transformations')
@@ -1758,8 +1764,8 @@ if nxt_phi_range_average != None:
     fout[master]['entry']['sample']['transformations']['phi_range_average'][()]=\
     nxt_phi_range_average[()]*int(args['sum_range'])
     fout[master]['entry']['sample']['transformations']['phi_range_average'].attrs.create(\
-        'units',ntstr(nxt_phi_range_average.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(nxt_phi_range_average.attrs['units'].decode('utf8')))
+        'units',ntstr(nxt_phi_range_average.attrs['units']),\
+        dtype=ntstrdt(nxt_phi_range_average.attrs['units']))
 if nxt_phi!=None:
     if not ('transformations' in  fout[master]['entry']['sample'].keys()):
         fout[master]['entry']['sample'].create_group('transformations')
@@ -1774,8 +1780,8 @@ if nxt_phi!=None:
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     nxt_phi[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
     fout[master]['entry']['sample']['transformations']['phi'].attrs.create(\
-        'units',ntstr(nxt_phi.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(nxt_phi.attrs['units'].decode('utf8')))
+        'units',ntstr(nxt_phi.attrs['units']),\
+        dtype=ntstrdt(nxt_phi.attrs['units']))
 if nxt_phi_end!=None:
     if not ('transformations' in  fout[master]['entry']['sample'].keys()):
         fout[master]['entry']['sample'].create_group('transformations')
@@ -1790,8 +1796,8 @@ if nxt_phi_end!=None:
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     nxt_phi_end[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
     fout[master]['entry']['sample']['transformations']['phi_end'].attrs.create(\
-        'units',ntstr(nxt_phi_end.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(nxt_phi_end.attrs['units'].decode('utf8')))
+        'units',ntstr(nxt_phi_end.attrs['units']),\
+        dtype=ntstrdt(nxt_phi_end.attrs['units']))
 if nxt_kappa!=None:
     if not ('transformations' in  fout[master]['entry']['sample'].keys()):
         fout[master]['entry']['sample'].create_group('transformations')
@@ -1806,8 +1812,8 @@ if nxt_kappa!=None:
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     nxt_kappa[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
     fout[master]['entry']['sample']['transformations']['kappa'].attrs.create(\
-        'units',ntstr(nxt_kappa.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(nxt_kappa.attrs['units'].decode('utf8')))
+        'units',ntstr(nxt_kappa.attrs['units']),\
+        dtype=ntstrdt(nxt_kappa.attrs['units']))
 if nxt_kappa_end!=None:
     if not ('transformations' in  fout[master]['entry']['sample'].keys()):
         fout[master]['entry']['sample'].create_group('transformations')
@@ -1822,8 +1828,8 @@ if nxt_kappa_end!=None:
     int(args['first_image'])+int(args['sum_range']))//int(args['sum_range'])]=\
     nxt_kappa_end[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
     fout[master]['entry']['sample']['transformations']['kappa_end'].attrs.create(\
-        'units',ntstr(nxt_kappa_end.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(nxt_kappa_end.attrs['units'].decode('utf8')))
+        'units',ntstr(nxt_kappa_end.attrs['units']),\
+        dtype=ntstrdt(nxt_kappa_end.attrs['units']))
 if nxt_kappa_range_total != None:
     if not ('transformations' in  fout[master]['entry']['sample'].keys()):
         fout[master]['entry']['sample'].create_group('transformations')
@@ -1834,8 +1840,8 @@ if nxt_kappa_range_total != None:
     fout[master]['entry']['sample']['transformations']['kappa_range_total'][()]=\
     nxt_kappa_range_total[()]
     fout[master]['entry']['sample']['transformations']['kappa_range_total'].attrs.create(\
-        'units',ntstr(nxt_kappa_range_total.attrs['units'].decode('utf8')),\
-        dtype=ntstrdt(nxt_kappa_range_total.attrs['units'].decode('utf8')))
+        'units',ntstr(nxt_kappa_range_total.attrs['units']),\
+        dtype=ntstrdt(nxt_kappa_range_total.attrs['units']))
 if nxt_translation!=None:
     if not ('transformations' in  fout[master]['entry']['sample'].keys()):
         fout[master]['entry']['sample'].create_group('transformations')
@@ -1851,16 +1857,16 @@ if nxt_translation!=None:
     nxt_translation[int(args['first_image'])-1:int(args['last_image']):int(args['sum_range'])]
     if 'depends_on' in nxt_translation.attrs.keys():
         fout[master]['entry']['sample']['transformations']['translation']\
-            .attrs.create('depends_on',nxt_translation.attrs['depends_on'].decode('utf8'))
+            .attrs.create('depends_on',nxt_translation.attrs['depends_on'])
     if 'offset' in nxt_translation.attrs.keys():
         fout[master]['entry']['sample']['transformations']['translation']\
             .attrs.create('offset',nxt_translation.attrs['offset'])
     if 'transformation_type' in nxt_translation.attrs.keys():
         fout[master]['entry']['sample']['transformations']['translation']\
-            .attrs.create('transformation_type',nxt_translation.attrs['transformation_type'].decode('utf8'))
+            .attrs.create('transformation_type',nxt_translation.attrs['transformation_type'])
     if 'units' in nxt_translation.attrs.keys():
         fout[master]['entry']['sample']['transformations']['translation']\
-            .attrs.create('units',nxt_translation.attrs['units'].decode('utf8'))
+            .attrs.create('units',nxt_translation.attrs['units'])
     if 'vector' in nxt_translation.attrs.keys():
         fout[master]['entry']['sample']['transformations']['translation']\
             .attrs.create('vector',nxt_translation.attrs['vector'])
