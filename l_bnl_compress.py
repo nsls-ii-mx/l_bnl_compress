@@ -15,7 +15,7 @@ options:
   -b BIN_RANGE, --bin BIN_RANGE
                         an integer image binning range (1 ...) to apply to each selected image
   -c COMPRESSION, --compression COMPRESSION
-                        optional compression, bslz4, bszstd, or bshuf
+                        optional compression, bslz4, bszstd, bshuf, or zstd
   -d DATA_BLOCK_SIZE, --data_block_size DATA_BLOCK_SIZE
                         data block size in images for out_file
   -H HCOMP_SCALE, --Hcompress HCOMP_SCALE
@@ -25,7 +25,7 @@ options:
   -J J2K_TARGET_COMPRESSION_RATIO, --J2K J2K_TARGET_COMPRESSION_RATIO
                         JPEG-2000 target compression ratio, immediately followed by decompression
   -l COMPRESSION_LEVEL, --compression_level COMPRESSION_LEVEL
-                        optional compression level for bszstd
+                        optional compression level for bszstd or zstd
   -m OUT_MASTER, --out_master OUT_MASTER
                         the output hdf5 master to which to write metadata, defaults to OUT_FILE_MASTER
                         if not given, out given as out_file
@@ -53,14 +53,100 @@ import skimage as ski
 import h5py
 import tifffile
 from astropy.io import fits
+from astropy.io.fits.hdu.compressed import COMPRESSION_TYPES
 import glymur
 import hdf5plugin
 import tempfile
 import numcodecs
 from astropy.io.fits.hdu.compressed._codecs import HCompress1
+from io import BytesIO
 
-version = "1.1.0"
-version_date = "02Aug24"
+def compress_HCarray(input_array, satval=32767, scale=16):
+    """
+    Compress a numpy int16 array using HCompress with lossy compression.
+    
+    Parameters:
+    -----------
+    input_array : numpy.ndarray
+        Input array with numpy.int16 (np.int16) dtype
+    satval : int, optional
+        Saturation value, default is 32767 (max value for signed 16-bit)
+    scale : int, optional
+        Compression scale factor (higher for more compression), default is 16
+        Common values are 12 or 16 for lossy compression
+    
+    Returns:
+    --------
+    compressed_data : bytes
+        Compressed data as bytes
+    shape : tuple
+        Original shape of the array for later decompression
+    """
+    # Ensure input is np.int16
+    if input_array.dtype != np.int16:
+        input_array = input_array.astype(np.int16)
+    
+    # Clip values between 0 and satval
+    clipped_array = np.clip(input_array, 0, satval)
+    
+    # Get original shape for decompression
+    original_shape = clipped_array.shape
+    
+    # Create a compressed HDU using HCompress
+    comp_hdu = fits.CompImageHDU(data=clipped_array, 
+                                 compression_type='HCOMPRESS_1',
+                                 hcomp_scale=scale)
+    
+    # Write to BytesIO object
+    buffer = fits.HDUList([fits.PrimaryHDU(), comp_hdu])
+    bio = BytesIO()
+    buffer.writeto(bio)
+    bio.seek(0)
+    
+    # Read the compressed data back and store the entire compressed HDU
+    with fits.open(bio) as hdul:
+        # Store the entire FITS file as bytes for later decompression
+        bio.seek(0)  # Reset to the beginning
+        fits_bytes = bio.read()
+    
+    # Return the entire FITS file, original shape
+    return fits_bytes, original_shape
+
+def decompress_HCarray(fits_bytes, original_shape, scale=16):
+    """
+    Decompress HCompressed data back to a numpy int16 array.
+    
+    Parameters:
+    -----------
+    fits_bytes : bytes
+        Complete FITS file as bytes from compress_array
+    original_shape : tuple
+        Original shape of the array
+    scale : int, optional
+        Compression scale factor used for compression, default is 16
+    
+    Returns:
+    --------
+    decompressed_array : numpy.ndarray
+        Decompressed array with the same shape as the original, as np.int16
+    """
+    # Create a BytesIO object from the FITS bytes
+    bio = BytesIO(fits_bytes)
+    
+    # Open the FITS file from memory
+    with fits.open(bio) as hdul:
+        # Extract the decompressed data
+        decompressed_array = hdul[1].data.copy()
+    
+    # Ensure output is np.int16
+    if decompressed_array.dtype != np.int16:
+        decompressed_array = decompressed_array.astype(np.int16)
+    
+    return decompressed_array
+
+
+version = "1.1.1"
+version_date = "10Mar25"
 xnt=int(1)
 
 def ntstr(xstr):
@@ -198,8 +284,8 @@ parser.add_argument('-1','--first_image', dest='first_image', type=int, nargs='?
    help= 'first selected image counting from 1, defaults to 1')
 parser.add_argument('-b','--bin', dest='bin_range', type=int, nargs='?', const=1, default=1,
    help= 'an integer image binning range (1 ...) to apply to each selected image, defaults to 1') 
-parser.add_argument('-c','--compression', dest='compression', nargs='?', const='bszstd', default='bszstd',
-   help= 'optional compression, bslz4, bszstd, or bshuf, defaults to bszstd')
+parser.add_argument('-c','--compression', dest='compression', nargs='?', const='zstd', default='zstd',
+   help= 'optional compression, bslz4, bszstd,  bshuf, or zstd, defaults to zstd')
 parser.add_argument('-d','--data_block_size', dest='data_block_size', type=int, nargs='?', const=100, default=100,
    help= 'data block size in images for out_file, defaults to 100')
 parser.add_argument('-H','--Hcompress', dest='hcomp_scale', type=int,
@@ -209,14 +295,14 @@ parser.add_argument('-i','--infile',dest='infile',
 parser.add_argument('-J','--J2K', dest='j2k_target_compression_ratio', type=int,
    help= 'JPEG-2000 target compression ratio, immediately followed by decompression')
 parser.add_argument('-l','--compression_level', dest='compression_level', type=int,
-   help= 'optional compression level for bszstd')
+   help= 'optional compression level for bszstd or zstd')
 parser.add_argument('-m','--out_master',dest='out_master',
    help= 'the output hdf5 master to which to write metadata')
 parser.add_argument('-N','--last_image', dest='last_image', type=int,
    help= 'last selected image counting from 1, defaults to number of images collected')
 parser.add_argument('-o','--out_file',dest='out_file',default='out_data',
    help= 'the output hdf5 data file out_file_?????? with an .h5 extension are files to which to write images')
-parser.add_argument('-q','--out_squash',dest='out_squash',default='out_squash',
+parser.add_argument('-q','--out_squash',dest='out_squash',
    help= 'the output hdf5 data file out_squash_?????? with an .h5 extension are optional files to which to write raw j2k or hcomp images')
 parser.add_argument('-s','--sum', dest='sum_range', type=int, nargs='?', const=1, default=1,
    help= 'an integer image summing range (1 ...) to apply to the selected images, defaults to 1')
@@ -1920,6 +2006,20 @@ for nout_block in range(1,out_number_of_blocks+1):
             maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
             dtype='u2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
             **hdf5plugin.Bitshuffle(nelems=0,cname='zstd',clevel=clevel))
+    elif args['compression']=='zstd' or args['compression']=='ZSTD':
+        if args['compression_level'] == None:
+            clevel=3
+        elif int(args['compression_level']) > 22:
+            clevel=22
+        elif int(args['compression_level']) < -2:
+            clevel=-2
+        else:
+            clevel=int(args['compression_level'])
+        fout[nout_block]['entry']['data'].create_dataset('data',
+            shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
+            maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
+            dtype='u2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
+            **hdf5plugin.Blosc(cname='zstd',clevel=clevel,shuffle=hdf5plugin.Blosc.NOSHUFFLE))
     else:
         print('l_bnl_compress.py: unrecognized compression, reverting to bslz4')
         fout[nout_block]['entry']['data'].create_dataset('data',
@@ -1950,30 +2050,25 @@ for nout_block in range(1,out_number_of_blocks+1):
             if myscale < 1 :
                 myscale=16
             img16=np.asarray(new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]],dtype='i2')
-            img32=(np.clip(img16,0,satval)).astype('i4')
-            hcomp = HCompress1(scale=int(myscale),smooth=False,bytepix=4,nx=nout_data_shape[0],ny=nout_data_shape[1])
-            hcomp_data=hcomp.encode(img32)
+            img16=(np.clip(img16,0,satval)).astype('i2')
+            fits_bytes, original_shape = compress_HCarray(img16,satval,myscale)
             if args['out_squash'] != None:
-                fout_squash[nout_block]['entry']['data'].create_dataset('data_'+str(out_image).zfill(6),data=bytearray(hcomp_data))
-                if args['verbose'] == True:
-                    print (fout_squash[nout_block]['entry']['data']['data_'+str(out_image).zfill(6)])
-                fout_squash[nout_block]['entry']['data']['data_'+str(out_image).zfill(6)].attrs.create('compression',ntstr('hcomp'),dtype=ntstrdt('hcomp'))
-                fout_squash[nout_block]['entry']['data']['data_'+str(out_image).zfill(6)].attrs.create('compression_level',myscale,dtype=ntstrdt('i2'))
-            hdecomp_data=hcomp.decode(np.frombuffer(hcomp_data,dtype=np.uint8))
-            decompressed_data = hdecomp_data.astype('i4').reshape((nout_data_shape[0],nout_data_shape[1]))
+                fout_squash[nout_block]['entry']['data'].create_dataset('data_'+str(out_image).zfill(6),data=repr(fits_bytes))
+            hdecomp_data=decompress_HCarray(fits_bytes,original_shape,scale=myscale)
+            decompressed_data= (np.maximum(hdecomp_data,0).astype(np.uint16)).reshape((nout_data_shape[0],nout_data_shape[1]))
             decompressed_data = np.clip(decompressed_data,0,satval)
-            hcomp_tot_compimgsize = hcomp_tot_compimgsize+sys.getsizeof(hcomp_data)
+            hcomp_tot_compimgsize = hcomp_tot_compimgsize+sys.getsizeof(fits_bytes)
             nhcomp_img = nhcomp_img+1
             if args['verbose'] == True:
-                print('l_bnl_compress.py: Hcompress sys.getsizeof(): ', sys.getsizeof(hcomp_data))
+                print('l_bnl_compress.py: Hcompress sys.getsizeof(): ', sys.getsizeof(fits_bytes))
                 print('                   decompressed_data sys.getsizeof: ', sys.getsizeof(decompressed_data))
             fout[nout_block]['entry']['data']['data'][out_image-nout_image, \
                 0:nout_data_shape[0],0:nout_data_shape[1]] \
                 = np.asarray(decompressed_data,dtype='u2')
             del decompressed_data
             del hdecomp_data
-            del hcomp_data
-            del img32
+            del fits_bytes
+            del img16
         else:
             mycrat=int(args['j2k_target_compression_ratio'])
             if mycrat < 1:
@@ -1984,14 +2079,13 @@ for nout_block in range(1,out_number_of_blocks+1):
             j2k=glymur.Jp2k(outtemp, data=img16, cratios=[mycrat])
             print ('j2k.dtype', j2k.dtype)
             print ('j2k.shape', j2k.shape)
-            jdecomped = j2k[:]
+            jdecomped = glymur.Jp2k(outtemp)
+            jdecomped = np.maximum(0,jdecomped[:])
             arr_final = np.array(jdecomped, dtype='u2')
             file_size = os.path.getsize(outtemp)
             if args['out_squash'] != None:
-                with open(outtemp, 'rb') as f:
-                    f.seek(0)
-                    fout_squash[nout_block]['entry']['data']\
-                    .create_dataset('data_'+str(out_image).zfill(6),data=bytearray(f.read()))
+                fout_squash[nout_block]['entry']['data']\
+                    .create_dataset('data_'+str(out_image).zfill(6),data=jdecomped)
                 if args['verbose'] == True:
                     print (fout_squash[nout_block]['entry']['data']['data_'+str(out_image).zfill(6)])
                 fout_squash[nout_block]['entry']['data']['data_'+str(out_image).zfill(6)]\
