@@ -1,5 +1,9 @@
 '''l_bnl_compress.py, lossy, but not lossy, compresss,
        a script to apply lossy compression to HDF5 MX image files.
+
+  (C) Copyright 16 March 2025 Herbert J. Bernstein
+  Portions suggested by claude.ai from Anthropic
+  You may redistribute l_bnl_compress.py under GPL2 or LGPL2 
  
 usage: l_bnl_compress.py [-h] [-1 FIRST_IMAGE] [-b BIN_RANGE] [-c COMPRESSION] [-d DATA_BLOCK_SIZE] \
                          [-H HCOMP_SCALE] [-i INFILE] [-J J2K_TARGET_COMPRESSION_RATIO] \
@@ -42,6 +46,8 @@ options:
   -v, --verbose         provide addtional information
 
   -V, --version         report the version and build_date
+
+
 
 '''
 
