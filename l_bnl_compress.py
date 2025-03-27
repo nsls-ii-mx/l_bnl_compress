@@ -248,6 +248,53 @@ def xfer_axis_attrs(dst,src):
             dtype=src.attrs['offset'].dtype)
 
 
+
+def bin_array(input_array, nbin, satval):
+    """
+    Bin a 2D numpy array into blocks of nbin x nbin pixels.
+    
+    Parameters:
+    -----------
+    input_array : numpy.ndarray
+        2D input array to be binned
+    nbin : int
+        Size of the binning block (nbin x nbin)
+    satval : int
+        Maximum value to clip the summed block values
+    
+    Returns:
+    --------
+    numpy.ndarray
+        Binned array with reduced dimensions
+    """
+    # Determine padded dimensions
+    height, width = input_array.shape
+    padded_height = int(np.ceil(height / nbin) * nbin)
+    padded_width = int(np.ceil(width / nbin) * nbin)
+    
+    # Create padded array initialized with zeros
+    padded_array = np.zeros((padded_height, padded_width), dtype=input_array.dtype)
+    
+    # Copy original array into padded array
+    padded_array[:height, :width] = input_array
+    
+    # Reshape and sum with clipping
+    reshaped = padded_array.reshape(
+        padded_height // nbin, nbin, 
+        padded_width // nbin, nbin
+    )
+    
+    # Sum each nbin x nbin block and clip
+    binned_array = np.clip(
+        reshaped.sum(axis=(1, 3)), 
+        0, 
+        satval
+    )
+    
+    return binned_array
+
+
+
 def bin(old_image,bin_range,satval):
     ''' bin(old_image,bin_range,satval)
 
@@ -1197,7 +1244,7 @@ for image in range(args['first_image'],(args['last_image'])+1,args['sum_range'])
         print('cur_source_img_block: ', cur_source_img_block)
         print('cur_source_img_imgno: ', cur_source_img_imgno)
         if args['bin_range'] > 1:
-            cur_source=bin(cur_source,int(args['bin_range']),satval)
+            cur_source=bin_array(cur_source,int(args['bin_range']),satval)
         if cur_image > image:
             prev_out = np.clip(prev_out+cur_source,0,satval)
         else:
