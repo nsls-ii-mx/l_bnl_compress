@@ -212,7 +212,7 @@ def conv_image_to_block_offset(img,npb):
     nblk=(img-1)//npb
     return (nblk,(int(img-1)%int(npb)))
 
-def conv_image_shqpe(old_shape,bin_range):
+def conv_image_shape(old_shape,bin_range):
     if len(old_shape) != 2:
         print('l_bnl_compress.py: invalid image shape for 2D binning')
         return None
@@ -1395,7 +1395,7 @@ fout[master]['entry']['instrument']['detector'].create_group(\
     'detectorSpecific')
 fout[master]['entry']['instrument']['detector']['detectorSpecific'].attrs.create(\
     'NX_class',ntstr('NXcollection'))
-new_shape=conv_image_shqpe((int(ypixels[()]),int(xpixels[()])),int(args['bin_range']))
+new_shape=conv_image_shape((int(ypixels[()]),int(xpixels[()])),int(args['bin_range']))
 fout[master]['entry']['instrument']['detector']['detectorSpecific'].create_dataset(\
     'auto_summation',data=1,dtype='i1')
 print('compression: ',args['compression'])
