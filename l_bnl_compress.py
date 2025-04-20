@@ -43,6 +43,8 @@ options:
                         if given as out_file 
   -s SUM_RANGE, --sum SUM_RANGE
                         an integer image summing range (1 ...) to apply to the selected images
+  -u SIZE ,--uint SIZE
+                        clip the output above 0 and limit to 2 byte or 4 byte integers 
   -v, --verbose         provide addtional information
 
   -V, --version         report the version and build_date
@@ -66,6 +68,245 @@ import tempfile
 import numcodecs
 from astropy.io.fits.hdu.compressed._codecs import HCompress1
 from io import BytesIO
+
+import numpy as np
+import h5py
+from PIL import Image
+import warnings
+from PIL import TiffTags, TiffImagePlugin
+import subprocess
+import string
+
+def sanitize_string(input_str):
+    """
+    Sanitizes a string for shell command usage by removing dangerous characters.
+    Does NOT add quote marks, but removes potentially harmful characters.
+    """
+    if not input_str:
+        return ""
+    
+    # Convert to string if needed
+    input_str = str(input_str)
+    
+    # Remove non-printable characters
+    printable_chars = set(string.printable)
+    sanitized = ''.join(c for c in input_str if c in printable_chars)
+    
+    # Remove shell metacharacters
+    dangerous_chars = ['&', ';', '|', '>', '<', '(', ')', '$', '`', '"', "'", '\\', '!', '*', '?', '{', '}', '[', ']', '~', '#']
+    for char in dangerous_chars:
+        sanitized = sanitized.replace(char, '')
+    if len(sanitized) == 0:
+        sanitized = 'EMPTY'
+    
+    return sanitized
+
+
+# Ultra-simplified version that relies on PIL's default behavior for most tags
+def save_uint16_tiff_simple(array, output_filename, verbose=False):
+    """
+    Absolute minimal version that only sets the critical tags.
+    
+    Parameters:
+    -----------
+    array : 2D NumPy array (uint16)
+        The image data to save as a TIFF file.
+    output_filename : str
+        The filename for the output TIFF file.
+    verbose : bool, optional
+        Whether to print information about the saved file
+        
+    Returns:
+    --------
+    str
+        Path to the saved TIFF file
+    """
+    # Check input
+    if array.dtype != np.uint16:
+        array = array.astype(np.uint16)
+        
+    if len(array.shape) != 2:
+        raise ValueError("Input array must be 2D")
+    
+    # Create directory if needed
+    os.makedirs(os.path.dirname(os.path.abspath(output_filename)), exist_ok=True)
+    
+    # Create image from array
+    img = Image.fromarray(array, mode='I;16')
+    
+    # Only set the absolute minimum required tags
+    tiff_tags = {
+        277: 1,  # SamplesPerPixel (1 = grayscale)
+        284: 1,  # PlanarConfiguration (1 = CONTIG)
+    }
+    
+    # Save with minimal intervention
+    img.save(
+        output_filename,
+        format="TIFF",
+        tiffinfo=tiff_tags
+    )
+    
+    if verbose:
+        print("Saved uint16 TIFF to "+output_filename)
+
+    
+    return output_filename
+
+
+def load_tiff_to_numpy(tiff_filename):
+    """
+    Load a TIFF file into a NumPy array, preserving the original data type.
+    
+    Parameters:
+    -----------
+    tiff_filename : str
+        The filename of the TIFF file to load.
+    
+    Returns:
+    --------
+    numpy.ndarray: The loaded image as a NumPy array
+    """
+    img = Image.open(tiff_filename)
+    
+    # Map PIL mode to NumPy dtype
+    mode_to_dtype = {
+        'L': np.uint8,
+        'I;16': np.uint16,
+        'I;16S': np.int16,
+        'I': np.int32,
+        'F': np.float32
+    }
+    
+    # Get the image mode and convert to array with appropriate dtype
+    mode = img.mode
+    if mode in mode_to_dtype:
+        dtype = mode_to_dtype[mode]
+    else:
+        dtype = None  # Let numpy decide
+    
+    # Convert to numpy array
+    numpy_array = np.array(img, dtype=dtype)
+    if args['verbose'] == True:
+        print('l_bnl_compress.py: ', \
+            "Loaded TIFF image from ", tiff_filename, \
+            " as array with shape ", numpy_array.shape," and dtype ", numpy_array.dtype)
+    
+    return numpy_array
+
+def compress_tif_to_jp2(input_file, output_file, ratios=[4000,2000,1000,500,250,125]):
+    """
+    Compress a TIF file to JP2 format using OpenJPEG
+    
+    Args:
+        input_file: Path to input TIF file
+        output_file: Path to output JP2 file
+        quality: Compression quality (lower = more compression)
+    
+    Returns:
+        CompletedProcess instance
+    """
+    cmd = "opj_compress" \
+        +" -i "+ input_file \
+        +" -o "+ output_file \
+        +" -r "+",".join(str(element) for element in ratios)
+    
+    result = subprocess.run( \
+        cmd, \
+        capture_output=True, \
+        text=True, \
+        shell=True, \
+        check=True  \
+    )
+    
+    return result
+
+def decompress_jp2_to_tif(input_file, output_file):
+    """
+    Decompress a JP2 file to TIF format using OpenJPEG
+    
+    Args:
+        input_file: Path to input JP2 file
+        output_file: Path to output TIF file
+    
+    Returns:
+        CompletedProcess instance
+    """
+    cmd = "opj_decompress"+" " \
+        +" -i "+ input_file \
+        +" -o "+ output_file
+    
+    result = subprocess.run( \
+        cmd, \
+        capture_output=True, \
+        text=True, \
+        shell=True, \
+        check=True \
+    )
+    
+    return result
+
+
+
+def run_bash_script_on_tiff(input_tiff, output_tiff, script_path):
+    """
+    Run a bash script on a TIFF file to produce a new TIFF file.
+    
+    Parameters:
+    -----------
+    input_tiff : str
+        Path to the input TIFF file.
+    output_tiff : str
+        Path where the output TIFF file should be saved.
+    script_path : str
+        Path to the bash script that should be run.
+    
+    Returns:
+    --------
+    str: Path to the output TIFF file if successful
+    """
+    try:
+        # Make the script executable if it isn't already
+        os.chmod(script_path, 0o755)
+        
+        # Run the bash script
+        cmd = [script_path, input_tiff, output_tiff]
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+
+        if args['verbose'] == True:        
+            print("l_bnl_compress.py: ", \
+                "Bash script executed successfully: \n",
+                result.stdout)
+        
+        # Check if the output file was created
+        if os.path.exists(output_tiff):
+            return output_tiff
+        else:
+            raise FileNotFoundError("Output TIFF file "+output_tiff+" was not created by the script")
+    
+    except subprocess.CalledProcessError as e:
+        print("l_bnl_compress.py: Error executing bash script: ",e)
+        print("l_bnl_compress.py: Script stderr: ",e.stderr)
+        raise
+    except Exception as e:
+        print("l_bnl_compress.py: Error: ",e)
+        raise
+
+
+def crat_list(mycrat):
+    '''
+    Convert a single target compression ratio into a list of
+    layer compression ratios at 2:1 ratios declining to mycrat
+    There will be no more than 10 ratios in the list.
+    '''
+    maxcrat = int(mycrat)
+    if maxcrat < 1:
+        maxcrat = 1
+    resrat = [ maxcrat ]
+    while maxcrat < 5001 and len(resrat) < 10:
+        maxcrat = maxcrat*2
+        resrat.insert(0,maxcrat)
+    return resrat
 
 def compress_HCarray(input_array, satval=32767, scale=16):
     """
@@ -151,8 +392,8 @@ def decompress_HCarray(fits_bytes, original_shape, scale=16):
     return decompressed_array
 
 
-version = "1.1.1"
-version_date = "10Mar25"
+version = "1.1.2"
+version_date = "19Apr25"
 xnt=int(1)
 
 def ntstr(xstr):
@@ -347,6 +588,8 @@ parser.add_argument('-i','--infile',dest='infile',
    help= 'the input hdf5 file to read images from')
 parser.add_argument('-J','--J2K', dest='j2k_target_compression_ratio', type=int,
    help= 'JPEG-2000 target compression ratio, immediately followed by decompression')
+parser.add_argument('-K','--J2K2', dest='j2k_alt_target_compression_ratio', type=int,
+   help= 'JPEG-2000 alternate target compression ratio, immediately followed by decompression')
 parser.add_argument('-l','--compression_level', dest='compression_level', type=int,
    help= 'optional compression level for bszstd or zstd')
 parser.add_argument('-m','--out_master',dest='out_master',
@@ -361,9 +604,33 @@ parser.add_argument('-s','--sum', dest='sum_range', type=int, nargs='?', const=1
    help= 'an integer image summing range (1 ...) to apply to the selected images, defaults to 1')
 parser.add_argument('-v','--verbose',dest='verbose',action='store_true',
    help= 'provide addtional information')
+parser.add_argument('-u','--uint', dest='uint', type=int, nargs='?', const=2, default=2,
+   help= 'clip the output above 0 and limit to 2 byte or 4 byte integers')
 parser.add_argument('-V','--version',dest='report_version',action='store_true',
    help= 'report version and version_date')
 args = vars(parser.parse_args())
+
+#Sanitize file names
+
+oout_file = args['out_file']
+oout_master = args['out_master']
+oout_squash = args['out_squash']
+
+if oout_file != None:
+    args['out_file'] = sanitize_string(oout_file)
+    if oout_file != args['out_file'] and args['verbose'] == True:
+        print("l_bnl_compress.py: sanitized out_file to ",args['out_file'])
+
+if oout_master != None:
+    args['out_master'] = sanitize_string(oout_master)
+    if oout_master != args['out_master'] and args['verbose'] == True:
+        print("l_bnl_compress.py: sanitized out_master to ",args['out_master'])
+
+if oout_squash != None:
+    args['out_squash'] = sanitize_string(out_squash)
+    if oout_squash != args['out_squasg'] and args['verbose'] == True:
+        print("l_bnl_compress.py: sanitized out_squash to ",args['out_squash'])
+
 
 #h5py._hl.filters._COMP_FILTERS['blosc']    =32001
 #h5py._hl.filters._COMP_FILTERS['lz4']      =32004
@@ -2028,22 +2295,27 @@ for nout_block in range(1,out_number_of_blocks+1):
         fout_squash[nout_block]['entry'].attrs.create('NX_class',ntstr('NXentry'),dtype=ntstrdt('NXentry'))
         fout_squash[nout_block]['entry'].create_group('data')
         fout_squash[nout_block]['entry']['data'].attrs.create('NX_class',ntstr('NXdata'),dtype=ntstrdt('NXdata'))
+    mydata_type='u2'
+    if args['uint']==4:
+        mydata_type='u4'
+    if args['uint']==0:
+        mydata_type='i4'
     if args['compression']==None:
         fout[nout_block]['entry']['data'].create_dataset('data',
             shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
             maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
-            dtype='u2',chunks=(1,nout_data_shape[0],nout_data_shape[1]))
+            dtype=mydata_type,chunks=(1,nout_data_shape[0],nout_data_shape[1]))
     elif args['compression']=='bshuf' or args['compression']=='BSHUF':
         fout[nout_block]['entry']['data'].create_dataset('data',
             shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
             maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
-            dtype='u2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
+            dtype=mydata_type,chunks=(1,nout_data_shape[0],nout_data_shape[1]),
             **hdf5plugin.Bitshuffle(nelems=0,cname='none'))
     elif args['compression']=='bslz4' or args['compression']=='BSLZ4':
         fout[nout_block]['entry']['data'].create_dataset('data',
             shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
             maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
-            dtype='u2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
+            dtype=mydata_type,chunks=(1,nout_data_shape[0],nout_data_shape[1]),
             **hdf5plugin.Bitshuffle(nelems=0,cname='lz4'))
     elif args['compression']=='bszstd' or args['compression']=='BSZSTD':
         if args['compression_level'] == None:
@@ -2057,7 +2329,7 @@ for nout_block in range(1,out_number_of_blocks+1):
         fout[nout_block]['entry']['data'].create_dataset('data',
             shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
             maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
-            dtype='u2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
+            dtype=mydata_type,chunks=(1,nout_data_shape[0],nout_data_shape[1]),
             **hdf5plugin.Bitshuffle(nelems=0,cname='zstd',clevel=clevel))
     elif args['compression']=='zstd' or args['compression']=='ZSTD':
         if args['compression_level'] == None:
@@ -2071,14 +2343,14 @@ for nout_block in range(1,out_number_of_blocks+1):
         fout[nout_block]['entry']['data'].create_dataset('data',
             shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
             maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
-            dtype='u2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
+            dtype=mydata_type,chunks=(1,nout_data_shape[0],nout_data_shape[1]),
             **hdf5plugin.Blosc(cname='zstd',clevel=clevel,shuffle=hdf5plugin.Blosc.NOSHUFFLE))
     else:
         print('l_bnl_compress.py: unrecognized compression, reverting to bslz4')
         fout[nout_block]['entry']['data'].create_dataset('data',
             shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
             maxshape=(None,nout_data_shape[0],nout_data_shape[1]),
-            dtype='u2',chunks=(1,nout_data_shape[0],nout_data_shape[1]),
+            dtype=mydata_type,chunks=(1,nout_data_shape[0],nout_data_shape[1]),
             **hdf5plugin.Bitshuffle(nelems=0,cname='lz4'))
     fout[nout_block]['entry']['data']['data'].attrs.create('image_nr_low',dtype=np.uint64,
         data=np.uint64(image_nr_low))
@@ -2095,7 +2367,9 @@ for nout_block in range(1,out_number_of_blocks+1):
     j2k_tot_compimgsize=0
     nj2k_img=0
     for out_image in range(nout_image,lim_nout_image):
-        if args['hcomp_scale']==None and args['j2k_target_compression_ratio']==None: 
+        if args['hcomp_scale']==None \
+            and args['j2k_target_compression_ratio']==None \
+            and args['j2k_alt_target_compression_ratio']==None:
             fout[nout_block]['entry']['data']['data'][out_image-nout_image,0:nout_data_shape[0],0:nout_data_shape[1]] \
               =np.clip(new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]],0,satval)
         elif args['hcomp_scale']!=None:
@@ -2122,14 +2396,14 @@ for nout_block in range(1,out_number_of_blocks+1):
             del hdecomp_data
             del fits_bytes
             del img16
-        else:
+        elif args['j2k_target_compression_ratio']!=None:
             mycrat=int(args['j2k_target_compression_ratio'])
             if mycrat < 1:
                 mycrat=125
             img16=new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]].astype('u2')
             outtemp=args['out_file']+"_"+str(out_image).zfill(6)+".j2k"
             print("outtemp: ",outtemp)
-            j2k=glymur.Jp2k(outtemp, data=img16, cratios=[mycrat])
+            j2k=glymur.Jp2k(outtemp, data=img16, cratios=crat_list(mycrat))
             print ('j2k.dtype', j2k.dtype)
             print ('j2k.shape', j2k.shape)
             jdecomped = glymur.Jp2k(outtemp)
@@ -2156,6 +2430,47 @@ for nout_block in range(1,out_number_of_blocks+1):
             del jdecomped
             del j2k
             os.remove(outtemp)
+        else:
+            mycrat=int(args['j2k_alt_target_compression_ratio'])
+            if mycrat < 1:
+                mycrat=125
+            img16=new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]].astype('u2')
+            outtemp_tif=args['out_file']+"_"+str(out_image).zfill(6)+".tif"
+            save_uint16_tiff_simple(img16,outtemp_tif)
+            outtemp=args['out_file']+"_"+str(out_image).zfill(6)+".j2k"
+            outtemp_outtiff=args['out_file']+"_decompresses_"+str(out_image).zfill(6)+".tif"
+            compress_tif_to_jp2(outtemp_tif, outtemp, ratios=crat_list(mycrat))
+            j2kimage = Image.open(outtemp)
+            j2k=np.array(j2kimage)
+            decompress_jp2_to_tif(outtemp, outtemp_outtiff)
+            jdecomped = load_tiff_to_numpy(outtemp_outtiff)
+            print("outtemp: ",outtemp)
+            jdecomped = np.maximum(0,jdecomped[:])
+            arr_final = np.array(jdecomped, dtype='u2')
+            file_size = os.path.getsize(outtemp)
+            if args['out_squash'] != None:
+                fout_squash[nout_block]['entry']['data']\
+                    .create_dataset('data_'+str(out_image).zfill(6),data=j2k)
+                if args['verbose'] == True:
+                    print (fout_squash[nout_block]['entry']['data']['data_'+str(out_image).zfill(6)])
+                fout_squash[nout_block]['entry']['data']['data_'+str(out_image).zfill(6)]\
+                .attrs.create('compression',ntstr('j2k'),dtype=ntstrdt('j2k'))
+                fout_squash[nout_block]['entry']['data']['data_'+str(out_image).zfill(6)]\
+                .attrs.create('compression_level',mycrat,dtype=ntstrdt('i2'))
+            j2k_tot_compimgsize = j2k_tot_compimgsize + file_size
+            nj2k_img = nj2k_img+1
+            if args['verbose'] == True:
+                print('l_bnl_compress.py: JPEG-2000 outtemp file_size: ', file_size )
+            fout[nout_block]['entry']['data']['data'][out_image-nout_image, \
+                0:nout_data_shape[0],0:nout_data_shape[1]] \
+                = np.clip(arr_final,0,satval)
+            del arr_final
+            del jdecomped
+            del j2k
+            os.remove(outtemp)
+            os.remove(outtemp_tif)
+            os.remove(outtemp_outtiff)
+
     fout[nout_block].close()
     if nhcomp_img > 0:
         print('l_bnl_compress.py: hcomp avg compressed image size: ', int(.5+hcomp_tot_compimgsize/nhcomp_img))
