@@ -2403,7 +2403,13 @@ for nout_block in range(1,out_number_of_blocks+1):
             img16=new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]].astype('u2')
             outtemp=args['out_file']+"_"+str(out_image).zfill(6)+".j2k"
             print("outtemp: ",outtemp)
-            j2k=glymur.Jp2k(outtemp, data=img16, cratios=crat_list(mycrat))
+            xmycrat = [mycrat]
+            if mycrat < 4000:
+                ycrat = mycrat * 2
+                while ycrat < 8000 :
+                    xmycrat.insert(0,ycrat)
+                    ycrat = ycrat *2
+            j2k=glymur.Jp2k(outtemp, data=img16, cratios=xmycrat)
             print ('j2k.dtype', j2k.dtype)
             print ('j2k.shape', j2k.shape)
             jdecomped = glymur.Jp2k(outtemp)
