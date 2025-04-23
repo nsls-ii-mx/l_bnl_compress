@@ -2440,7 +2440,7 @@ for nout_block in range(1,out_number_of_blocks+1):
             mycrat=int(args['j2k_alt_target_compression_ratio'])
             if mycrat < 1:
                 mycrat=125
-            img16=new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]].astype('u2')
+            img16=np.clip(new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]].astype('u2'),0,satval)
             outtemp_tif=args['out_file']+"_"+str(out_image).zfill(6)+".tif"
             save_uint16_tiff_simple(img16,outtemp_tif)
             outtemp=args['out_file']+"_"+str(out_image).zfill(6)+".j2k"
@@ -2449,7 +2449,7 @@ for nout_block in range(1,out_number_of_blocks+1):
             j2kimage = Image.open(outtemp)
             j2k=np.array(j2kimage)
             decompress_jp2_to_tif(outtemp, outtemp_outtiff)
-            jdecomped = load_tiff_to_numpy(outtemp_outtiff)
+            jdecomped = np.clip(load_tiff_to_numpy(outtemp_outtiff),0,satval)
             print("outtemp: ",outtemp)
             jdecomped = np.maximum(0,jdecomped[:])
             arr_final = np.array(jdecomped, dtype='u2')
