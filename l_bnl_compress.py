@@ -38,7 +38,7 @@ options:
   -o OUT_FILE, --out_file OUT_FILE
                         the output hdf5 data file out_file_?????? with an .h5 extension are files to which to write images
   -p THREADS, -- parallel THREADS
-                        the number of parallel threads with NO_MASTER option to spawn to generate data files in parallel 
+                        the number of parallel threads with to spawn to generate -H, -J, or -K data files in parallel 
   -q OUT_SQUASH, --out_squash OUT_SQUASH
                         an optional hdf5 data file out_squash_?????? with an .h5 extension are optional files to which
                         raw j2k or hcomp files paralleling OUT_FILE are written, defaults to OUT_FILE_SQUASH
@@ -46,7 +46,8 @@ options:
   -s SUM_RANGE, --sum SUM_RANGE
                         an integer image summing range (1 ...) to apply to the selected images
   -t THREAD_NO, --thread THREAD_NO
-                        process the given thread number, 0, for the master file only, which runs first by itself and produces no data files
+                        process the given thread number, 0, for the master file only, which runs first by itself and 
+                        produces no data files
   -u SIZE ,--uint SIZE
                         clip the output above 0 and limit to 2 byte or 4 byte integers 
   -v, --verbose         provide addtional information
@@ -495,8 +496,8 @@ def decompress_HCarray(fits_bytes, original_shape, scale=16):
     return decompressed_array
 
 
-version = "1.1.2"
-version_date = "19Apr25"
+version = "1.1.3"
+version_date = "02May25"
 xnt=int(1)
 
 def ntstr(xstr):
@@ -702,7 +703,7 @@ parser.add_argument('-N','--last_image', dest='last_image', type=int,
 parser.add_argument('-o','--out_file',dest='out_file',default='out_data',
    help= 'the output hdf5 data file out_file_?????? with an .h5 extension are files to which to write images')
 parser.add_argument('-p','-- parallel',dest='threads', default=4,
-   help= 'the number of parallel threads with extra thread 0 used by itself to genrate the new master file first') 
+   help= 'the number of parallel threads with extra thread 0 used by itself to generate the new master file first') 
 parser.add_argument('-q','--out_squash',dest='out_squash',
    help= 'the output hdf5 data file out_squash_?????? with an .h5 extension are optional files to which to write raw j2k or hcomp images')
 parser.add_argument('-s','--sum', dest='sum_range', type=int, nargs='?', const=1, default=1,
@@ -1347,7 +1348,7 @@ except:
 try:
     nxt_kappa_range_average=fin['entry']['sample']['transformations']['kappa_range_average']
     if nxt_kappa_range_average.shape == ():
-        nxt_kappa_range_average = None
+        nxt_kappa_range_average = Mome
     if args['verbose'] == True:
         print('l_bnl_compress.py: entry/sample/transformations/kappa_range_average: ', \
             nxt_kappa_range_average)
@@ -2481,8 +2482,8 @@ if threads <= 0 or thread ==0:
                sys.exit()
                break
            time.sleep(20)
-           for mythread in range(1,args['threads']+1):
-               print('Job ', mythread, 'status: ', manager.get_status(Jobs[mythread])) 
+           #for mythread in range(1,args['threads']+1):
+           #    print('Job ', mythread, 'status: ', manager.get_status(Jobs[mythread])) 
 else:
     fout[master] = h5py.File(args['out_master']+".h5",'r')
 print('out_number_of_blocks: ', out_number_of_blocks)
@@ -2493,8 +2494,8 @@ out_block_limit = out_number_of_blocks+1
 out_block_step = 1
 if thread > out_number_of_blocks:
     thread = out_number_of_blocks
-if threads != None and threads > 1 and thread > 1:
-    out_block_start = threads
+if threads != None and threads > 1 and thread > 0:
+    out_block_start = thread
     out_block_step = threads
 for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
     if threads != None and threads > 1:
