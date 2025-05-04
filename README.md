@@ -11,10 +11,10 @@ Jean Jakoncic, 2025.  "Massive Compression for High Data Rate Macromolecular Cry
  Mar 1;32(2)]
 
 ### usage: l_bnl_compress.py [-h] [-1 [FIRST_IMAGE]] [-b [BIN_RANGE]] [-c [COMPRESSION]] [-d [DATA_BLOCK_SIZE]]
-                         [-H HCOMP_SCALE] [-i INFILE] [-J J2K_TARGET_COMPRESSION_RATIO]
-                         [-K J2K_ALT_TARGET_COMPRESSION_RATIO] [-l COMPRESSION_LEVEL] [-m OUT_MASTER]
-                         [-N LAST_IMAGE] [-o OUT_FILE] [-p THREADS] [-q OUT_SQUASH] [-s [SUM_RANGE]]
-                         [-t [THREAD]] [-u [UINT]] [-v] [-V]
+###                      [-H HCOMP_SCALE] [-i INFILE] [-J J2K_TARGET_COMPRESSION_RATIO]
+###                      [-K J2K_ALT_TARGET_COMPRESSION_RATIO] [-l COMPRESSION_LEVEL] [-m OUT_MASTER]
+###                      [-N LAST_IMAGE] [-o OUT_FILE] [-p THREADS] [-q OUT_SQUASH] [-s [SUM_RANGE]]
+###                      [-t [THREAD]] [-u [UINT]] [-v] [-V]
 
 ## Bin and sum images from a range and optionally apply JPEG-2000 or HCompress
 
