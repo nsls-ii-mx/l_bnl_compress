@@ -130,7 +130,7 @@ The modules upon which this program depends are:
 This version supports coarse-grained process-level parallelism in writing
 the -H, -J, or -K compressions.  In the near future
 we intend to upgrade to parallelism using concurrent.futures, which
-will also requre an upgrade to parallel hdf5 and parallel h5py.
+will also require an upgrade to parallel hdf5 and parallel h5py.
 In order to achieve reasonable timing without major use of parallelism
 as many files as possible should be in memory.  Use of /dev/shm is
 highly recommended.
