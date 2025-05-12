@@ -702,7 +702,7 @@ parser.add_argument('-N','--last_image', dest='last_image', type=int,
    help= 'last selected image counting from 1, defaults to number of images collected')
 parser.add_argument('-o','--out_file',dest='out_file',default='out_data',
    help= 'the output hdf5 data file out_file_?????? with an .h5 extension are files to which to write images')
-parser.add_argument('-p','-- parallel',dest='threads', default=4,
+parser.add_argument('-p','-- parallel',dest='threads', default=0,
    help= 'the number of parallel threads with extra thread 0 used by itself to generate the new master file first') 
 parser.add_argument('-q','--out_squash',dest='out_squash',
    help= 'the output hdf5 data file out_squash_?????? with an .h5 extension are optional files to which to write raw j2k or hcomp images')
@@ -762,6 +762,14 @@ if args['verbose'] == True:
 
 if args['threads'] != None:
     args['threads'] = int(args['threads'])
+    if args['threads'] < 2:
+        args['threads'] = 0
+else:
+    args['threads'] = 0
+threads = args['threads']
+
+if args['verbose'] == True:
+    print('l_bnl_compress.py: threads: ',threads)
 
 try:
     fin = h5py.File(args['infile'], 'r')
@@ -2486,6 +2494,7 @@ if threads <= 0 or thread ==0:
            #    print('Job ', mythread, 'status: ', manager.get_status(Jobs[mythread])) 
 else:
     fout[master] = h5py.File(args['out_master']+".h5",'r')
+
 print('out_number_of_blocks: ', out_number_of_blocks)
 print('threads: ',threads)
 print('thread: ',thread)
@@ -2497,11 +2506,16 @@ if thread > out_number_of_blocks:
 if threads != None and threads > 1 and thread > 0:
     out_block_start = thread
     out_block_step = threads
+if args['verbose'] == True:
+    print('nout_block in range(',out_block_start,out_number_of_blocks+1,out_block_step,')')
 for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
-    if threads != None and threads > 1:
+    if threads == None or threads <= 1:
+        if args['verbose'] == True:
+            print('nout_block in range(',out_block_start,out_number_of_blocks+1,out_block_step,')')
+    elif threads != None and threads > 1 and thread > 0:
         mythread = (nout_block-1)%threads +1
         if mythread != thread:
-            continue;
+            continue; 
     nout_image=1+(nout_block-1)*out_number_per_block
     image_nr_low=nout_image
     lim_nout_image = nout_image+out_number_per_block
@@ -2509,6 +2523,10 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
         lim_nout_image = out_max_image+1
     image_nr_high = lim_nout_image-1
     nout_data_shape = new_images[nout_image].shape
+    if args['verbose'] == True:
+        print('nout_block: ',nout_block)
+        print('image_nr_low: ',image_nr_low)
+        print('image_nr_high :',image_nr_high)
     fout[nout_block] = h5py.File(args['out_file']+"_"+str(nout_block).zfill(6)+".h5",'w')
     fout[nout_block].create_group('entry')
     fout[nout_block]['entry'].attrs.create('NX_class',ntstr('NXentry'),dtype=ntstrdt('NXentry'))
@@ -2706,4 +2724,4 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
         print('l_bnl_compress.py: hcomp avg compressed image size: ', int(.5+hcomp_tot_compimgsize/nhcomp_img))
     if nj2k_img > 0:
         print('l_bnl_compress.py: j2k avg compressed imgage size: ', int(.5+j2k_tot_compimgsize/nj2k_img))
-    sys.exit()
+sys.exit()
