@@ -8,7 +8,7 @@
 usage: l_bnl_compress.py [-h] [-1 FIRST_IMAGE] [-b BIN_RANGE] [-c COMPRESSION] [-d DATA_BLOCK_SIZE] \
                          [-H HCOMP_SCALE] [-i INFILE] [-J J2K_TARGET_COMPRESSION_RATIO] \
                          [-l COMPRESSION_LEVEL] [-m OUT_MASTER] [-N LAST_IMAGE] [-o OUT_FILE] \
-                         [-q OUT_SQUASH] [-s SUM_RANGE] [-v]
+                         [-q OUT_SQUASH] [-s SUM_RANGE] [-S SCALE] [-v]
 
 Bin and sum images from a range
 
@@ -45,6 +45,8 @@ options:
                         if given as out_file 
   -s SUM_RANGE, --sum SUM_RANGE
                         an integer image summing range (1 ...) to apply to the selected images
+  -S SCALE, --scale SCALE
+                        a non negative scaling factor to apply both the the images and satval
   -t THREAD_NO, --thread THREAD_NO
                         process the given thread number, 0, for the master file only, which runs first by itself and 
                         produces no data files
@@ -205,6 +207,59 @@ if __name__ == "__main__":
     print(f"Job 3 first 100 chars: '{result3.stdout[:100]}...'")
 '''
 
+def scale_with_saturation(arr, scale_factor, satval=65534, only_uint16=True):
+    """
+    Scale a uint16 array by a non-negative float, with saturation handling.
+    change to uint32 if satval scales above 65534
+    
+    Parameters:
+    -----------
+    arr : numpy.ndarray
+        Input 2D array with uint16 data type
+    scale_factor : float
+        Non-negative scaling factor
+    satval : int, optional
+        Saturation threshold value (default 65534)
+    only_uint16: bool, optional
+        If true limit scaling to salval <= 65534
+    
+    Returns:
+    --------
+    numpy.ndarray
+        Scaled array, converted to uint32 if scaled satval exceeds 65534
+            unless only_uint16 is true
+    """
+    
+    # Check that scale factor is non-negative
+    if scale_factor < 0:
+        raise ValueError("Scale factor must be non-negative")
+
+    # scale the satval
+    new_satval = int(satval*scale_factor+0.5)
+
+    new_arr = np.clip(arr,0,satval)
+    
+    # Check if any value exceeds the saturation threshold
+    if new_satval > 65534:
+        if only_uint16 == True:
+            new_scale_factor = scale_factor*65534./new_satval
+            scaled_arr = new_arr * new_scale_factor
+            result = np.clip(scaled_arr.astype(np.uint16),0,65534)
+            return (result, 65534)
+        else:
+            scaled_arr = arr * scale_factor
+            # Convert to uint32 to prevent overflow
+            result = np.clip(scaled_arr.astype(np.uint32),0,new_satval)
+            if args['verbose'] == True:
+                print("l_bnl_compress.py Warning: Values exceed saturation threshold. Converting to uint32.")
+            return (result, new_satval)
+    else:
+        scaled_arr = new_arr * scale_factor
+        # Keep as uint16
+        result = np.clip(scaled_arr.astype(np.uint16),0,new_satval)
+        return (result, new_satval)
+
+
 
 # Ultra-simplified version that relies on PIL's default behavior for most tags
 def save_uint16_tiff_simple(array, output_filename, verbose=False):
@@ -242,6 +297,8 @@ def save_uint16_tiff_simple(array, output_filename, verbose=False):
     tiff_tags = {
         277: 1,  # SamplesPerPixel (1 = grayscale)
         284: 1,  # PlanarConfiguration (1 = CONTIG)
+        258: 16, # BitsPerSample (16 for unint16)
+        262: 1   # MinisBlack 
     }
     
     # Save with minimal intervention
@@ -669,7 +726,7 @@ def bin(old_image,bin_range,satval):
         new_image=np.clip(np.pad(np.asarray(new_image,dtype='u2'),((0,ymargin),(0,xmargin)),'constant',constant_values=((0,0),(0,0))),0,satval)
     else:
         new_image=np.clip(np.asarray(new_image,dtype='u2'),0,satval)
-    new_image=(np.asarray(new_image,dtype='u2')).clip(0,satval)
+    new_image=np.clip(np.asarray(new_image,dtype='u2'),0,satval)
     new_image=np.round(ski.measure.block_reduce(new_image,(bin_range,bin_range),np.sum))
     new_image=np.asarray(np.clip(new_image,0,satval),dtype='u2')
     if args['verbose']==True:
@@ -708,6 +765,8 @@ parser.add_argument('-q','--out_squash',dest='out_squash',
    help= 'the output hdf5 data file out_squash_?????? with an .h5 extension are optional files to which to write raw j2k or hcomp images')
 parser.add_argument('-s','--sum', dest='sum_range', type=int, nargs='?', const=1, default=1,
    help= 'an integer image summing range (1 ...) to apply to the selected images, defaults to 1')
+parser.add_argument('-S', '--scale', dest='scale_factor', type=float,default=1.,
+   help= 'a non negative scaling factor to apply both images and satval, defaults to 1,')
 parser.add_argument('-t','--thread',dest='thread', type=int,nargs='?',
    help= 'the thread number for the action of the current invocation of l_bnl_compress, 0 to just make a new master file, otherwise between 1 and the number of datablocks/threads')
 parser.add_argument('-u','--uint', dest='uint', type=int, nargs='?', const=2, default=2,
@@ -1674,9 +1733,10 @@ for image in range(args['first_image'],(args['last_image'])+1,args['sum_range'])
         if cur_image > image:
             prev_out = np.clip(prev_out+cur_source,0,satval)
         else:
-            prev_out = (np.asarray(cur_source,dtype='i2')).clip(0,satval)
+            prev_out = np.clip(np.asarray(cur_source,dtype='i2'),0,satval)
     new_nimage = new_nimage+1
     new_images[new_nimage]=prev_out
+    del prev_out
     if args['verbose']==True:
         print('image output shape ',new_nimage,' ',new_images[new_nimage].shape)
 
@@ -2610,23 +2670,29 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
     j2k_tot_compimgsize=0
     nj2k_img=0
     for out_image in range(nout_image,lim_nout_image):
+        (newresult,new_satval)=scale_with_saturation(np.clip(new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]],0,satval), float(args['scale_factor']), satval)
+        if args['verbose'] == True:
+            print('l_bnl_compress.py satval: ',satval,' new_satval: ',new_satval,' scale_factor: ',float(args['scale_factor']))
         if args['hcomp_scale']==None \
             and args['j2k_target_compression_ratio']==None \
             and args['j2k_alt_target_compression_ratio']==None:
             fout[nout_block]['entry']['data']['data'][out_image-nout_image,0:nout_data_shape[0],0:nout_data_shape[1]] \
-              =np.clip(new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]],0,satval)
+              =np.clip(newresult,0,new_satval)
+            del new_images[out_image]
         elif args['hcomp_scale']!=None:
             myscale=args['hcomp_scale']
             if myscale < 1 :
                 myscale=16
-            img16=np.asarray(new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]],dtype='i2')
-            img16=(np.clip(img16,0,satval)).astype('i2')
-            fits_bytes, original_shape = compress_HCarray(img16,satval,myscale)
+            #img16=np.asarray(new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]],dtype='i2')
+            img16=np.clip(newresult,0,new_satval)
+            del new_images[out_image]
+            img16=img16.astype('i2')
+            fits_bytes, original_shape = compress_HCarray(img16,new_satval,myscale)
             if args['out_squash'] != None:
                 fout_squash[nout_block]['entry']['data'].create_dataset('data_'+str(out_image).zfill(6),data=repr(fits_bytes))
             hdecomp_data=decompress_HCarray(fits_bytes,original_shape,scale=myscale)
             decompressed_data= (np.maximum(hdecomp_data,0).astype(np.uint16)).reshape((nout_data_shape[0],nout_data_shape[1]))
-            decompressed_data = np.clip(decompressed_data,0,satval)
+            decompressed_data = np.clip(decompressed_data,0,new_satval)
             hcomp_tot_compimgsize = hcomp_tot_compimgsize+sys.getsizeof(fits_bytes)
             nhcomp_img = nhcomp_img+1
             if args['verbose'] == True:
@@ -2643,7 +2709,9 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
             mycrat=int(args['j2k_target_compression_ratio'])
             if mycrat < 1:
                 mycrat=125
-            img16=new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]].astype('u2')
+            #img16=new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]].astype('u2')
+            img16=np.clip(newresult,0,new_satval)
+            del new_images[out_image]
             outtemp=args['out_file']+"_"+str(out_image).zfill(6)+".j2k"
             print("outtemp: ",outtemp)
             xmycrat = [mycrat]
@@ -2674,7 +2742,7 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
                 print('l_bnl_compress.py: JPEG-2000 outtemp file_size: ', file_size )
             fout[nout_block]['entry']['data']['data'][out_image-nout_image, \
                 0:nout_data_shape[0],0:nout_data_shape[1]] \
-                = np.clip(arr_final,0,satval)
+                = np.clip(arr_final,0,new_satval)
             del arr_final
             del jdecomped
             del j2k
@@ -2683,7 +2751,9 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
             mycrat=int(args['j2k_alt_target_compression_ratio'])
             if mycrat < 1:
                 mycrat=125
-            img16=np.clip(new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]].astype('u2'),0,satval)
+            #img16=np.clip(new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]].astype('u2'),0,satval)
+            img16=np.clip(newresult,0,new_satval)
+            del new_images[out_image]
             outtemp_tif=args['out_file']+"_"+str(out_image).zfill(6)+".tif"
             save_uint16_tiff_simple(img16,outtemp_tif)
             outtemp=args['out_file']+"_"+str(out_image).zfill(6)+".j2k"
@@ -2692,7 +2762,7 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
             j2kimage = Image.open(outtemp)
             j2k=np.array(j2kimage)
             decompress_jp2_to_tif(outtemp, outtemp_outtiff)
-            jdecomped = np.clip(load_tiff_to_numpy(outtemp_outtiff),0,satval)
+            jdecomped = np.clip(load_tiff_to_numpy(outtemp_outtiff),0,new_satval)
             print("outtemp: ",outtemp)
             jdecomped = np.maximum(0,jdecomped[:])
             arr_final = np.array(jdecomped, dtype='u2')
@@ -2712,14 +2782,14 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
                 print('l_bnl_compress.py: JPEG-2000 outtemp file_size: ', file_size )
             fout[nout_block]['entry']['data']['data'][out_image-nout_image, \
                 0:nout_data_shape[0],0:nout_data_shape[1]] \
-                = np.clip(arr_final,0,satval)
+                = np.clip(arr_final,0,new_satval)
             del arr_final
             del jdecomped
             del j2k
             os.remove(outtemp)
             os.remove(outtemp_tif)
             os.remove(outtemp_outtiff)
-    fout[nout_block].close()
+    del fout[nout_block]
     if nhcomp_img > 0:
         print('l_bnl_compress.py: hcomp avg compressed image size: ', int(.5+hcomp_tot_compimgsize/nhcomp_img))
     if nj2k_img > 0:
