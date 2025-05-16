@@ -140,7 +140,7 @@ highly recommended.
 
 ## Supporting Data
 
-See [https://zenodo.org/records/15376113](https://zenodo.org/records/15376113) for 3 data sets that are used to evaluate application of lossy compression for MX diffraction dat:   A lysosyme data set collected at 7500 eV to solve the S_SAD structure (Ly_01_22013); 
+See [https://zenodo.org/records/15376113](https://zenodo.org/records/15376113) for 3 data sets that are used to evaluate application of lossy compression for MX diffraction data:   A lysosyme data set collected at 7500 eV to solve the S_SAD structure (Ly_01_22013); 
 A thermolysin data set from a fragment screening campaign collection at the NSLS-II AMX beamline with a fragment bound (tlys-817_10982); 
 A  CBASS Cap5 from Pseudomonas syringae as an activated tetramer with the cyclic dinucleotide 3'2'-c-diAMP ligand data set (Endo6_23AA_2v_502).
 
