@@ -15,7 +15,7 @@ Jean Jakoncic, 2025.  "Massive Compression for High Data Rate Macromolecular Cry
     [-H HCOMP_SCALE] [-i INFILE] [-J J2K_TARGET_COMPRESSION_RATIO]
     [-K J2K_ALT_TARGET_COMPRESSION_RATIO] [-l COMPRESSION_LEVEL] [-m OUT_MASTER]
     [-N LAST_IMAGE] [-o OUT_FILE] [-p THREADS] [-q OUT_SQUASH] [-s [SUM_RANGE]]
-    [-t [THREAD]] [-u [UINT]] [-v] [-V]
+    [-S SCALE] [-t [THREAD]] [-u [UINT]] [-v] [-V]
 
 ## Bin and sum images from a range and optionally apply JPEG-2000 or HCompress
 
@@ -74,6 +74,9 @@ Jean Jakoncic, 2025.  "Massive Compression for High Data Rate Macromolecular Cry
   -s [SUM_RANGE], --sum [SUM_RANGE]
                         an integer image summing range (1 ...) to apply to the selected 
                         images, defaults to 1
+
+  -S SCALE,--scale SCALE
+                        a non negative scaling factor to apply both to the images and satval
 
   -t [THREAD], --thread [THREAD]
                         the thread number for the action of the current invocation of 
@@ -134,3 +137,12 @@ will also require an upgrade to parallel hdf5 and parallel h5py.
 In order to achieve reasonable timing without major use of parallelism
 as many files as possible should be in memory.  Use of /dev/shm is
 highly recommended.
+
+## Supporting Data
+
+See [https://zenodo.org/records/15376113] (https://zenodo.org/records/15376113) for 3 data sets that are used to evaluate application of lossy compression for MX diffraction dat:   A lysosyme data set collected at 7500 eV to solve the S_SAD structure (Ly_01_22013); 
+A thermolysin data set from a fragment screening campaign collection at the NSLS-II AMX beamline with a fragment bound (tlys-817_10982); 
+A  CBASS Cap5 from Pseudomonas syringae as an activated tetramer with the cyclic dinucleotide 3'2'-c-diAMP ligand data set (Endo6_23AA_2v_502).
+
+The CBASS Cap5 structure was published and deposited to the PDB site (8FMG.PDB and https://doi.org/10.1038/s41594-024-01220-x). 
+The 7500 eV lysosyme structure was solved using S_SAD phases initial compression results are published (9B7F.PDB and [https://doi.org/10.1107/S160057752400359X](https://doi.org/10.1107/S160057752400359X).
