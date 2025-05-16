@@ -144,5 +144,5 @@ See [https://zenodo.org/records/15376113](https://zenodo.org/records/15376113) f
 A thermolysin data set from a fragment screening campaign collection at the NSLS-II AMX beamline with a fragment bound (tlys-817_10982); 
 A  CBASS Cap5 from Pseudomonas syringae as an activated tetramer with the cyclic dinucleotide 3'2'-c-diAMP ligand data set (Endo6_23AA_2v_502).
 
-The CBASS Cap5 structure was published and deposited to the PDB site (8FMG.PDB and [https://doi.org/10.1038/s41594-024-01220-x][https://doi.org/10.1038/s41594-024-01220-x). 
+The CBASS Cap5 structure was published and deposited to the PDB site (8FMG.PDB and [https://doi.org/10.1038/s41594-024-01220-(https://doi.org/10.1038/s41594-024-01220-x). 
 The 7500 eV lysosyme structure was solved using S_SAD phases initial compression results are published (9B7F.PDB and [https://doi.org/10.1107/S160057752400359X](https://doi.org/10.1107/S160057752400359X).
