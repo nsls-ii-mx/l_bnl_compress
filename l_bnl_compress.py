@@ -209,13 +209,13 @@ if __name__ == "__main__":
 
 def scale_with_saturation(arr, scale_factor, satval=65534, only_uint16=True):
     """
-    Scale a uint16 array by a non-negative float, with saturation handling.
-    change to uint32 if satval scales above 65534
+    Scale a uint16 or int32  array by a non-negative float, with saturation handling.
+    change to int32 if satval scales above 65534
     
     Parameters:
     -----------
     arr : numpy.ndarray
-        Input 2D array with uint16 data type
+        Input 2D array with uint16 or int32 data type
     scale_factor : float
         Non-negative scaling factor
     satval : int, optional
@@ -230,6 +230,10 @@ def scale_with_saturation(arr, scale_factor, satval=65534, only_uint16=True):
             unless only_uint16 is true
     """
     
+    my_dtype = np.int32
+    if args['uint'] == 2:
+        my_dtype = np.uint16
+
     # Check that scale factor is non-negative
     if scale_factor < 0:
         raise ValueError("Scale factor must be non-negative")
@@ -237,7 +241,7 @@ def scale_with_saturation(arr, scale_factor, satval=65534, only_uint16=True):
     # scale the satval
     new_satval = int(satval*scale_factor+0.5)
 
-    new_arr = np.clip(arr,0,satval)
+    new_arr = np.clip(arr.astype(np.int32),0,satval)
     
     # Check if any value exceeds the saturation threshold
     if new_satval > 65534:
@@ -248,16 +252,16 @@ def scale_with_saturation(arr, scale_factor, satval=65534, only_uint16=True):
             return (result, 65534)
         else:
             scaled_arr = arr * scale_factor
-            # Convert to uint32 to prevent overflow
-            result = np.clip(scaled_arr.astype(np.uint32),0,new_satval)
+            # Convert to int32 to prevent overflow
+            result = np.clip(scaled_arr.astype(np.int32),0,new_satval)
             if args['verbose'] == True:
                 print("l_bnl_compress.py Warning: Values exceed saturation threshold. Converting to uint32.")
-            return (result, new_satval)
+            return (result.astype(my_dtype), new_satval)
     else:
         scaled_arr = new_arr * scale_factor
-        # Keep as uint16
-        result = np.clip(scaled_arr.astype(np.uint16),0,new_satval)
-        return (result, new_satval)
+        # Keep as my_dtype
+        result = np.clip(scaled_arr.astype(np.int32),0,new_satval)
+        return (result.astype(my_dtype), new_satval)
 
 
 
@@ -553,8 +557,8 @@ def decompress_HCarray(fits_bytes, original_shape, scale=16):
     return decompressed_array
 
 
-version = "1.1.3"
-version_date = "02May25"
+version = "1.1.4"
+version_date = "30May25"
 xnt=int(1)
 
 def ntstr(xstr):
@@ -700,18 +704,26 @@ def bin_array(input_array, nbin, satval):
 def bin(old_image,bin_range,satval):
     ''' bin(old_image,bin_range,satval)
 
-    convert an image in old_image to a returned u2 numpy array by binning
+    convert an image in old_image to a returned u2 or i4  numpy array by binning
     the pixels in old_image in by summing bin_range by bin_range rectanglar 
     blocks, clipping values between 0 and satval.  If bin_range does not divide
     the original dimensions exactly, the old_image is padded with zeros.
+
+    Because of problems with numpy and h5py, uint 4 is handled as a subset of
+    i4. amd u2 is handled without np.clip
     '''
     s=old_image.shape
     if len(s) != 2:
         print('l_bnl_compress.py: invalid image shape for 2D binning')
         return None
-    new_image = np.maximum(old_image,0).astype(np.uint16)
+    my_dtype = np.int32
+    new_image = old_image.astype(my_dtype)
+    new_image = np.maximum(new_image,0)
     if bin_range < 2:
-        return new_image.clip(0,satval)
+        new_image = new_image(0,satval)
+        if args['uint'] == 2:
+            return new_image.astype('np.uint2')
+        return new_image
     sy=s[0]
     nsy=int(sy+bin_range-1)//bin_range
     ymargin=0
@@ -725,15 +737,16 @@ def bin(old_image,bin_range,satval):
     if ((xmargin > 0) or (ymargin > 0)):
         new_image=np.clip(np.pad(np.asarray(new_image,dtype='u2'),((0,ymargin),(0,xmargin)),'constant',constant_values=((0,0),(0,0))),0,satval)
     else:
-        new_image=np.clip(np.asarray(new_image,dtype='u2'),0,satval)
-    new_image=np.clip(np.asarray(new_image,dtype='u2'),0,satval)
+        new_image=new_image.clip(0,satval)
     new_image=np.round(ski.measure.block_reduce(new_image,(bin_range,bin_range),np.sum))
-    new_image=np.asarray(np.clip(new_image,0,satval),dtype='u2')
-    if args['verbose']==True:
-        print('converted with bin ',s,' to ',new_image.shape,' with dtype u2')
-    return new_image
-
-
+    new_image=new_image.clip(0,satval)
+    if args['uint'] == 2:
+        if args['verbose'] == True:
+            print('l_bnl_compress binned image of shape ', s, ' to u2 binned by ', bin_range)
+            return new_image.astype(np.uint16)
+    if args['verbose'] == True:
+        print('l_bnl_compress binned image of shape ', s, ' to i4 binned by ', bin_range)            
+        return new_image.astype(np.uint16)
 parser = argparse.ArgumentParser(description='Bin and sum images from a range')
 parser.add_argument('-1','--first_image', dest='first_image', type=int, nargs='?', const=1, default=1,
    help= 'first selected image counting from 1, defaults to 1')
@@ -2600,9 +2613,9 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
         fout_squash[nout_block]['entry']['data'].attrs.create('NX_class',ntstr('NXdata'),dtype=ntstrdt('NXdata'))
     mydata_type='u2'
     if args['uint']==4:
-        mydata_type='u4'
+        mydata_type=np.int32
     if args['uint']==0:
-        mydata_type='i4'
+        mydata_type=np.int32
     if args['compression']==None:
         fout[nout_block]['entry']['data'].create_dataset('data',
             shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
@@ -2669,8 +2682,12 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
     nhcomp_img = 0
     j2k_tot_compimgsize=0
     nj2k_img=0
+    my_dtype = 'np.int32'
+    if args['uint']==2:
+        my_dtype = 'np.uint16'
     for out_image in range(nout_image,lim_nout_image):
-        (newresult,new_satval)=scale_with_saturation(np.clip(new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]],0,satval), float(args['scale_factor']), satval)
+        (newresult,new_satval)=scale_with_saturation(np.clip(new_images[out_image][0:nout_data_shape[0],\
+            0:nout_data_shape[1]],0,satval), float(args['scale_factor']), satval)
         if args['verbose'] == True:
             print('l_bnl_compress.py satval: ',satval,' new_satval: ',new_satval,' scale_factor: ',float(args['scale_factor']))
         if args['hcomp_scale']==None \
@@ -2683,7 +2700,6 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
             myscale=args['hcomp_scale']
             if myscale < 1 :
                 myscale=16
-            #img16=np.asarray(new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]],dtype='i2')
             img16=np.clip(newresult,0,new_satval)
             del new_images[out_image]
             img16=img16.astype('i2')
@@ -2709,7 +2725,6 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
             mycrat=int(args['j2k_target_compression_ratio'])
             if mycrat < 1:
                 mycrat=125
-            #img16=new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]].astype('u2')
             img16=np.clip(newresult,0,new_satval)
             del new_images[out_image]
             outtemp=args['out_file']+"_"+str(out_image).zfill(6)+".j2k"
@@ -2751,7 +2766,6 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
             mycrat=int(args['j2k_alt_target_compression_ratio'])
             if mycrat < 1:
                 mycrat=125
-            #img16=np.clip(new_images[out_image][0:nout_data_shape[0],0:nout_data_shape[1]].astype('u2'),0,satval)
             img16=np.clip(newresult,0,new_satval)
             del new_images[out_image]
             outtemp_tif=args['out_file']+"_"+str(out_image).zfill(6)+".tif"
