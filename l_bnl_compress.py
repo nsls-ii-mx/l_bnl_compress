@@ -1721,7 +1721,6 @@ new_images = {}
 print("args['first_image']",args['first_image'])
 print("(args['last_image'])+1",(args['last_image'])+1)
 print("args['sum_range']",args['sum_range'])
-
 for image in range(args['first_image'],(args['last_image'])+1,args['sum_range']):
     lim_image=image+int(args['sum_range'])
     if lim_image > args['last_image']+1:
@@ -1737,6 +1736,7 @@ for image in range(args['first_image'],(args['last_image'])+1,args['sum_range'])
         cur_source_img_block='data_'+str(cur_source[0]+block_start).zfill(6)
         cur_source_img_imgno=cur_source[1]
         cur_source=datagroup[cur_source_img_block][cur_source_img_imgno,:,:]
+        cur_source[(cur_source  < 0) | (cur_source > 65530)]=0
         if args['verbose']==True:
             print('image input shape ',cur_source.shape)
         print('cur_source_img_block: ', cur_source_img_block)
