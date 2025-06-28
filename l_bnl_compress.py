@@ -88,6 +88,334 @@ import time
 import queue
 import string
 
+from collections import OrderedDict
+import gc
+
+import h5py
+import numpy as np
+from collections import OrderedDict
+import threading
+import time
+import gc
+
+class HDF5DatasetBuffer:
+    """
+    Efficient buffering system for large HDF5 datasets with automatic caching,
+    chunking, and memory management.
+    """
+    
+    def __init__(self, filepath, max_cache_size=50, max_memory_mb=2048):
+        """
+        Initialize the buffer manager.
+        
+        Args:
+            filepath: Path to HDF5 file
+            max_cache_size: Maximum number of datasets to keep in memory
+            max_memory_mb: Maximum memory usage in MB
+        """
+        self.filepath = filepath
+        self.max_cache_size = max_cache_size
+        self.max_memory_bytes = max_memory_mb * 1024 * 1024
+        
+        # LRU cache using OrderedDict
+        self.cache = OrderedDict()
+        self.cache_sizes = {}  # Track memory usage per dataset
+        self.current_memory = 0
+        
+        # Thread safety
+        self.lock = threading.RLock()
+        
+        # Performance tracking
+        self.hits = 0
+        self.misses = 0
+        
+    def _get_optimal_chunks(self, shape, dtype, target_chunk_mb=1):
+        """Calculate optimal chunk size for HDF5 dataset."""
+        element_size = np.dtype(dtype).itemsize
+        target_elements = (target_chunk_mb * 1024 * 1024) // element_size
+        
+        if len(shape) == 1:
+            chunk_size = min(shape[0], target_elements)
+            return (chunk_size,)
+        elif len(shape) == 2:
+            # For 2D arrays, try to keep chunks roughly square
+            sqrt_elements = int(np.sqrt(target_elements))
+            chunk_rows = min(shape[0], sqrt_elements)
+            chunk_cols = min(shape[1], target_elements // chunk_rows)
+            return (chunk_rows, chunk_cols)
+        else:
+            # For higher dimensions, distribute evenly
+            chunk_per_dim = int(target_elements ** (1/len(shape)))
+            return tuple(min(s, chunk_per_dim) for s in shape)
+    
+    def create_dataset(self, name, data, compression='lzf', shuffle=True):
+        """
+        Create a new dataset with optimal chunking and compression.
+        
+        Args:
+            name: Dataset name
+            data: NumPy array data
+            compression: Compression algorithm ('gzip', 'lzf', 'szip')
+            shuffle: Whether to shuffle bytes for better compression
+        """
+        with h5py.File(self.filepath, 'a') as f:
+            if name in f:
+                del f[name]  # Replace existing dataset
+            
+            chunks = self._get_optimal_chunks(data.shape, data.dtype)
+            
+            dset = f.create_dataset(
+                name, 
+                data=data,
+                dtype=data.dtype,
+                shape=data.shape,
+                chunks=chunks,
+                compression=compression,
+                shuffle=shuffle,
+                fletcher32=True  # Checksum for data integrity
+            )
+            
+            # Add metadata
+            dset.attrs['created'] = time.time()
+            dset.attrs['chunk_size'] = chunks
+            
+        print(f"Created dataset '{name}' with chunks {chunks}, compression: {compression}")
+    
+    def _evict_if_needed(self, required_bytes):
+        """Evict datasets from cache if memory limit would be exceeded."""
+        while (self.current_memory + required_bytes > self.max_memory_bytes or 
+               len(self.cache) >= self.max_cache_size):
+            if not self.cache:
+                break
+                
+            # Remove least recently used item
+            oldest_name, oldest_data = self.cache.popitem(last=False)
+            freed_bytes = self.cache_sizes.pop(oldest_name)
+            self.current_memory -= freed_bytes
+            
+            print(f"Evicted '{oldest_name}' ({freed_bytes / (1024*1024):.1f} MB)")
+    
+    def get_dataset(self, name, use_cache=True):
+        """
+        Retrieve dataset with intelligent caching.
+        
+        Args:
+            name: Dataset name
+            use_cache: Whether to use/update cache
+            
+        Returns:
+            NumPy array containing dataset data
+        """
+        with self.lock:
+            # Check cache first
+            if use_cache and name in self.cache:
+                # Move to end (most recently used)
+                self.cache.move_to_end(name)
+                self.hits += 1
+                return self.cache[name]
+            
+            # Load from disk
+            self.misses += 1
+            with h5py.File(self.filepath, 'r') as f:
+                if name not in f:
+                    raise KeyError(f"Dataset '{name}' not found")
+                
+                data = f[name][...]  # Load entire dataset
+                
+            if use_cache:
+                # Calculate memory footprint
+                data_bytes = data.nbytes
+                
+                # Evict old data if necessary
+                self._evict_if_needed(data_bytes)
+                
+                # Add to cache
+                self.cache[name] = data.copy()  # Ensure we own the memory
+                self.cache_sizes[name] = data_bytes
+                self.current_memory += data_bytes
+                
+                print(f"Cached '{name}' ({data_bytes / (1024*1024):.1f} MB)")
+            
+            return data
+    
+    def get_dataset_slice(self, name, slice_obj):
+        """
+        Get a slice of a dataset without loading the entire dataset.
+        Useful for very large datasets where you only need part of the data.
+        """
+        with h5py.File(self.filepath, 'r') as f:
+            if name not in f:
+                raise KeyError(f"Dataset '{name}' not found")
+            return f[name][slice_obj]
+    
+    def update_dataset(self, name, data, start_idx=None):
+        """
+        Update dataset on disk and invalidate cache.
+        
+        Args:
+            name: Dataset name
+            data: New data
+            start_idx: Starting index for partial updates (tuple)
+        """
+        with self.lock:
+            with h5py.File(self.filepath, 'a') as f:
+                if name not in f:
+                    raise KeyError(f"Dataset '{name}' not found")
+                
+                if start_idx is None:
+                    f[name][...] = data
+                else:
+                    f[name][start_idx] = data
+            
+            # Invalidate cache
+            if name in self.cache:
+                freed_bytes = self.cache_sizes.pop(name)
+                self.current_memory -= freed_bytes
+                del self.cache[name]
+                print(f"Invalidated cache for '{name}'")
+    
+    def prefetch_datasets(self, dataset_names):
+        """
+        Preload multiple datasets into cache.
+        Useful when you know which datasets you'll need soon.
+        """
+        for name in dataset_names:
+            try:
+                self.get_dataset(name, use_cache=True)
+            except KeyError:
+                print(f"Warning: Dataset '{name}' not found, skipping prefetch")
+    
+    def list_datasets(self):
+        """List all datasets in the HDF5 file with their properties."""
+        datasets = []
+        with h5py.File(self.filepath, 'r') as f:
+            def visit_func(name, obj):
+                if isinstance(obj, h5py.Dataset):
+                    datasets.append({
+                        'name': name,
+                        'shape': obj.shape,
+                        'dtype': obj.dtype,
+                        'size_mb': obj.size * obj.dtype.itemsize / (1024*1024),
+                        'chunks': obj.chunks,
+                        'compression': obj.compression
+                    })
+            
+            f.visititems(visit_func)
+        
+        return datasets
+    
+    def get_cache_stats(self):
+        """Get cache performance statistics."""
+        total_requests = self.hits + self.misses
+        hit_rate = (self.hits / total_requests * 100) if total_requests > 0 else 0
+        
+        return {
+            'hit_rate_percent': hit_rate,
+            'cache_size': len(self.cache),
+            'memory_usage_mb': self.current_memory / (1024*1024),
+            'cached_datasets': list(self.cache.keys())
+        }
+    
+    def clear_cache(self):
+        """Clear all cached data."""
+        with self.lock:
+            self.cache.clear()
+            self.cache_sizes.clear()
+            self.current_memory = 0
+            gc.collect()  # Force garbage collection
+            print("Cache cleared")
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.clear_cache()
+
+'''
+# Example usage and utility functions
+def create_sample_datasets(buffer_manager, num_datasets=10):
+    """Create sample datasets for testing."""
+    print(f"Creating {num_datasets} sample datasets...")
+    
+    for i in range(num_datasets):
+        # Create 5MB datasets (roughly 1.25M float32 values)
+        data = np.random.random((1250000,)).astype(np.float32)
+        dataset_name = f"dataset_{i:04d}"
+        buffer_manager.create_dataset(dataset_name, data)
+    
+    print("Sample datasets created!")
+
+def benchmark_access_patterns(buffer_manager, dataset_names):
+    """Benchmark different access patterns."""
+    print("\n=== Benchmarking Access Patterns ===")
+    
+    # Random access pattern
+    import random
+    random_names = random.sample(dataset_names, min(20, len(dataset_names)))
+    
+    start_time = time.time()
+    for name in random_names:
+        data = buffer_manager.get_dataset(name)
+        # Simulate some processing
+        result = np.mean(data)
+    
+    random_time = time.time() - start_time
+    stats = buffer_manager.get_cache_stats()
+    
+    print(f"Random access: {random_time:.2f}s, Hit rate: {stats['hit_rate_percent']:.1f}%")
+    
+    # Sequential access pattern (should have lower hit rate initially)
+    buffer_manager.clear_cache()
+    start_time = time.time()
+    
+    for name in dataset_names[:20]:
+        data = buffer_manager.get_dataset(name)
+        result = np.mean(data)
+    
+    sequential_time = time.time() - start_time
+    stats = buffer_manager.get_cache_stats()
+    
+    print(f"Sequential access: {sequential_time:.2f}s, Hit rate: {stats['hit_rate_percent']:.1f}%")
+'''
+
+'''
+# Usage example
+if __name__ == "__main__":
+    # Initialize buffer manager
+    with HDF5DatasetBuffer("large_datasets.h5", max_cache_size=50, max_memory_mb=1024) as buffer:
+        
+        # Create sample datasets (uncomment to create test data)
+        # create_sample_datasets(buffer, num_datasets=100)
+        
+        # List all datasets
+        datasets = buffer.list_datasets()
+        print(f"Found {len(datasets)} datasets")
+        
+        # Example: Access datasets with caching
+        dataset_names = [d['name'] for d in datasets[:10]]
+        
+        # Prefetch datasets you know you'll need
+        buffer.prefetch_datasets(dataset_names[:5])
+        
+        # Access datasets (will use cache when available)
+        for name in dataset_names:
+            data = buffer.get_dataset(name)
+            print(f"Loaded {name}: shape {data.shape}, mean = {np.mean(data):.4f}")
+        
+        # Get performance statistics
+        stats = buffer.get_cache_stats()
+        print(f"\nCache Stats: {stats}")
+        
+        # Example: Partial dataset access for very large datasets
+        # slice_data = buffer.get_dataset_slice("dataset_0001", slice(0, 1000))
+        
+
+        
+        # Benchmark different access patterns
+        if len(datasets) > 0:
+            benchmark_access_patterns(buffer, [d['name'] for d in datasets])
+'''
+
 def sanitize_string(input_str):
     """
     Sanitizes a string for shell command usage by removing dangerous characters.
@@ -1718,6 +2046,10 @@ if (args['bin_range'] == None) or (args['bin_range'] < 2):
 new_nimage = 0
 new_images = {}
 
+new_images_buffer=args['out_file']+"_new_images.h5"
+new_images_buffer_manager= \
+     HDF5DatasetBuffer(new_images_buffer, max_cache_size=50, max_memory_mb=1024)
+
 print("args['first_image']",args['first_image'])
 print("(args['last_image'])+1",(args['last_image'])+1)
 print("args['sum_range']",args['sum_range'])
@@ -1725,7 +2057,7 @@ for image in range(args['first_image'],(args['last_image'])+1,args['sum_range'])
     lim_image=image+int(args['sum_range'])
     if lim_image > args['last_image']+1:
         lim_image = args['last_image']+1
-    if args['verbose']==True:
+    if args['verbose']==True and args['sum_range'] > 1 :
         print('Adding images from ',image,' to ',lim_image)
     prev_out=None
     for cur_image in range(image,lim_image):
@@ -1747,11 +2079,10 @@ for image in range(args['first_image'],(args['last_image'])+1,args['sum_range'])
             prev_out = np.clip(prev_out+cur_source,0,satval)
         else:
             prev_out = np.clip(np.asarray(cur_source,dtype='i2'),0,satval)
+        del cur_source
     new_nimage = new_nimage+1
-    new_images[new_nimage]=prev_out
+    new_images_buffer_manager.create_dataset(str(new_nimage), prev_out)
     del prev_out
-    if args['verbose']==True:
-        print('image output shape ',new_nimage,' ',new_images[new_nimage].shape)
 
 
 if (args['data_block_size'] == None) or (args['data_block_size'] < 2):
@@ -2595,7 +2926,10 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
     if lim_nout_image > out_max_image+1:
         lim_nout_image = out_max_image+1
     image_nr_high = lim_nout_image-1
+    new_images[nout_image]= \
+        new_images_buffer_manager.get_dataset(str(nout_image))
     nout_data_shape = new_images[nout_image].shape
+    print ('nout_data_shape: ',nout_data_shape)
     if args['verbose'] == True:
         print('nout_block: ',nout_block)
         print('image_nr_low: ',image_nr_low)
@@ -2686,8 +3020,15 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
     if args['uint']==2:
         my_dtype = 'np.uint16'
     for out_image in range(nout_image,lim_nout_image):
-        (newresult,new_satval)=scale_with_saturation(np.clip(new_images[out_image][0:nout_data_shape[0],\
-            0:nout_data_shape[1]],0,satval), float(args['scale_factor']), satval)
+        new_images[out_image]= \
+            new_images_buffer_manager.get_dataset(str(out_image))
+        try:
+            (newresult,new_satval)=scale_with_saturation(np.clip(new_images[out_image][0:nout_data_shape[0],\
+                0:nout_data_shape[1]],0,satval), float(args['scale_factor']), satval)
+            del new_images[out_image]
+        except:
+            print('out_image: ',out_image)
+            print('nout_data_shape: ',nout_data_shape)
         if args['verbose'] == True:
             print('l_bnl_compress.py satval: ',satval,' new_satval: ',new_satval,' scale_factor: ',float(args['scale_factor']))
         if args['hcomp_scale']==None \
@@ -2695,7 +3036,6 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
             and args['j2k_alt_target_compression_ratio']==None:
             fout[nout_block]['entry']['data']['data'][out_image-nout_image,0:nout_data_shape[0],0:nout_data_shape[1]] \
               =np.clip(newresult,0,new_satval)
-            del new_images[out_image]
         elif args['hcomp_scale']!=None:
             myscale=args['hcomp_scale']
             if myscale < 1 :
@@ -2726,7 +3066,6 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
             if mycrat < 1:
                 mycrat=125
             img16=np.clip(newresult,0,new_satval)
-            del new_images[out_image]
             outtemp=args['out_file']+"_"+str(out_image).zfill(6)+".j2k"
             print("outtemp: ",outtemp)
             xmycrat = [mycrat]
@@ -2767,7 +3106,6 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
             if mycrat < 1:
                 mycrat=125
             img16=np.clip(newresult,0,new_satval)
-            del new_images[out_image]
             outtemp_tif=args['out_file']+"_"+str(out_image).zfill(6)+".tif"
             save_uint16_tiff_simple(img16,outtemp_tif)
             outtemp=args['out_file']+"_"+str(out_image).zfill(6)+".j2k"
@@ -2808,4 +3146,5 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
         print('l_bnl_compress.py: hcomp avg compressed image size: ', int(.5+hcomp_tot_compimgsize/nhcomp_img))
     if nj2k_img > 0:
         print('l_bnl_compress.py: j2k avg compressed imgage size: ', int(.5+j2k_tot_compimgsize/nj2k_img))
+os.remove(new_images_buffer)
 sys.exit()
