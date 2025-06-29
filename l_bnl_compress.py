@@ -2046,7 +2046,13 @@ if (args['bin_range'] == None) or (args['bin_range'] < 2):
 new_nimage = 0
 new_images = {}
 
-new_images_buffer=args['out_file']+"_new_images.h5"
+if args['thread'] == 0 or args['thread'] ==None:
+    thread = 0
+else:
+    thread = int(args['thread'])
+args['thread'] = str(thread)
+
+new_images_buffer=args['out_file']+'_'+args['thread']+"_new_images.h5"
 new_images_buffer_manager= \
      HDF5DatasetBuffer(new_images_buffer, max_cache_size=50, max_memory_mb=1024)
 
@@ -2120,10 +2126,6 @@ if args['threads'] == 0 or args['threads'] == None:
     threads = 0
 else:
     threads = int(args['threads'])
-if args['thread'] == 0 or args['thread'] ==None:
-    thread = 0
-else:
-    thread = int(args['thread'])
 if threads <= 0 or thread ==0:
     write_master=True
     fout[master] = h5py.File(args['out_master']+".h5",'w')
