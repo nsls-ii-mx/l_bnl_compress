@@ -3043,7 +3043,6 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
             if myscale < 1 :
                 myscale=16
             img16=np.clip(newresult,0,new_satval)
-            del new_images[out_image]
             img16=img16.astype('i2')
             fits_bytes, original_shape = compress_HCarray(img16,new_satval,myscale)
             if args['out_squash'] != None:
