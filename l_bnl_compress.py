@@ -3,10 +3,11 @@
 
   (C) Copyright 16 March 2025 Herbert J. Bernstein
   Portions suggested by claude.ai from Anthropic
-  You may redistribute l_bnl_compress.py under GPL2 or LGPL2 
+  You may redistribute l_bnl_compress.py under GPL2 or LGPL2
+  Rev 26 Jul 2025 Herbert J. Bernstein, add log and exp 
  
 usage: l_bnl_compress.py [-h] [-1 FIRST_IMAGE] [-b BIN_RANGE] [-c COMPRESSION] [-d DATA_BLOCK_SIZE] \
-                         [-H HCOMP_SCALE] [-i INFILE] [-J J2K_TARGET_COMPRESSION_RATIO] \
+                         [-f SIZE] [-H HCOMP_SCALE] [-i INFILE] [-J J2K_TARGET_COMPRESSION_RATIO] \
                          [-l COMPRESSION_LEVEL] [-m OUT_MASTER] [-N LAST_IMAGE] [-o OUT_FILE] \
                          [-q OUT_SQUASH] [-s SUM_RANGE] [-S SCALE] [-v]
 
@@ -22,14 +23,21 @@ options:
                         optional compression, bslz4, bszstd, bshuf, or zstd
   -d DATA_BLOCK_SIZE, --data_block_size DATA_BLOCK_SIZE
                         data block size in images for out_file
+  -f UFLOAT, --float UFLOAT
+                        clip the output above 0 and limit to 2 byte or 4 byte floats
   -H HCOMP_SCALE, --Hcompress HCOMP_SCALE
                         Hcompress scale compression, immediately followed by decompression
   -i INFILE, --infile INFILE
                         the input hdf5 file to read images from
   -J J2K_TARGET_COMPRESSION_RATIO, --J2K J2K_TARGET_COMPRESSION_RATIO
                         JPEG-2000 target compression ratio, immediately followed by decompression
+  -K J2K_ALT_TARGET_COMPRESSION_RATIO, --J2K J2K_ALT_TARGET_COMPRESSION_RATIO
+                        JPEG-2000 alternatetarget compression ratio, immediately followed by decompression
   -l COMPRESSION_LEVEL, --compression_level COMPRESSION_LEVEL
                         optional compression level for bszstd or zstd
+  -L LOGARITHM_BASE, --logarithm LOGARITHM_BASE
+                        convert non-negative values v to log(v+1), negative values to-log(-v+1)
+                        as short float, if --uint is not specified or whatever is specified by --unit or by --float 
   -m OUT_MASTER, --out_master OUT_MASTER
                         the output hdf5 master to which to write metadata, defaults to OUT_FILE_MASTER
                         if not given, out given as out_file
@@ -50,14 +58,15 @@ options:
   -t THREAD_NO, --thread THREAD_NO
                         process the given thread number, 0, for the master file only, which runs first by itself and 
                         produces no data files
-  -u SIZE ,--uint SIZE
+  -u UINT ,--uint UINT
                         clip the output above 0 and limit to 2 byte or 4 byte integers 
   -v, --verbose         provide addtional information
 
   -V, --version         report the version and build_date
 
-
-
+  -X EXPONENT, --exponential EXPONENT
+                        convert non-negative calues v to exp(v)-1 and negative values to -exp(-v)+1
+                        as short unsigned int, if --float is not specified  or whatever is specified by --unit or by --float
 
 '''
 
@@ -77,7 +86,6 @@ import numcodecs
 from astropy.io.fits.hdu.compressed._codecs import HCompress1
 from io import BytesIO
 
-import numpy as np
 import h5py
 from PIL import Image
 import warnings
@@ -92,7 +100,6 @@ from collections import OrderedDict
 import gc
 
 import h5py
-import numpy as np
 from collections import OrderedDict
 import threading
 import time
@@ -416,6 +423,379 @@ if __name__ == "__main__":
             benchmark_access_patterns(buffer, [d['name'] for d in datasets])
 '''
 
+
+def exp_base(base, x, out=None):
+    """
+    Numerically stable computation of base^x for arbitrary bases.
+    
+    This function computes base^x in a numerically stable way by using
+    the identity: base^x = exp(x * ln(base))
+    
+    For better numerical stability, it handles special cases and uses
+    log-space arithmetic when appropriate.
+    
+    Parameters:
+    -----------
+    base : array_like
+        The base(s). Must be positive for real results.
+    x : array_like
+        The exponent(s).
+    out : ndarray, optional
+        Output array to store results.
+        
+    Returns:
+    --------
+    ndarray
+        base^x computed in a numerically stable manner.
+        
+    Examples:
+    ---------
+    >>> exp_base(2, 10)
+    1024.0
+    >>> exp_base(np.e, 2)  # Should be close to np.exp(2)
+    7.38905609893065
+    >>> exp_base([2, 3, 10], [8, 4, 2])
+    array([ 256.,   81.,  100.])
+    """
+    base = np.asarray(base, dtype=float)
+    x = np.asarray(x, dtype=float)
+    
+    # Handle special cases for numerical stability
+    result_shape = np.broadcast_shapes(base.shape, x.shape)
+    if out is None:
+        result = np.empty(result_shape, dtype=float)
+    else:
+        result = out
+        if result.shape != result_shape:
+            raise ValueError(f"Output array shape {result.shape} doesn't match broadcast shape {result_shape}")
+    
+    # Broadcast inputs for element-wise operations
+    base_bc, x_bc = np.broadcast_arrays(base, x)
+    result_flat = result.ravel()
+    base_flat = base_bc.ravel()
+    x_flat = x_bc.ravel()
+    
+    for i in range(len(result_flat)):
+        b, exp_val = base_flat[i], x_flat[i]
+        
+        # Handle special cases
+        if b <= 0:
+            if b == 0:
+                result_flat[i] = 0.0 if exp_val > 0 else (1.0 if exp_val == 0 else np.inf)
+            else:
+                # Negative base - only defined for integer exponents in real domain
+                if np.isclose(exp_val, np.round(exp_val)):
+                    result_flat[i] = np.power(b, exp_val)
+                else:
+                    result_flat[i] = np.nan
+        elif b == 1:
+            result_flat[i] = 1.0
+        elif exp_val == 0:
+            result_flat[i] = 1.0
+        elif exp_val == 1:
+            result_flat[i] = b
+        elif np.isinf(exp_val):
+            if b > 1:
+                result_flat[i] = np.inf if exp_val > 0 else 0.0
+            elif b < 1:
+                result_flat[i] = 0.0 if exp_val > 0 else np.inf
+            else:  # b == 1, already handled above
+                result_flat[i] = 1.0
+        else:
+            # General case: use log-space computation for stability
+            # base^x = exp(x * ln(base))
+            log_base = np.log(b)
+            log_result = exp_val * log_base
+            
+            # Check for potential overflow/underflow in exp
+            if log_result > 700:  # exp(700) is near overflow threshold
+                result_flat[i] = np.inf
+            elif log_result < -700:  # exp(-700) is effectively zero
+                result_flat[i] = 0.0
+            else:
+                result_flat[i] = np.exp(log_result)
+    
+    return result.reshape(result_shape)
+
+
+def exp_base_vectorized(base, x, out=None):
+    """
+    Vectorized version of exp_base for better performance on large arrays.
+    
+    This version uses numpy's vectorized operations where possible while
+    still maintaining numerical stability.
+    """
+    base = np.asarray(base, dtype=float)
+    x = np.asarray(x, dtype=float)
+    
+    # Handle the general case using log-space arithmetic
+    with np.errstate(divide='ignore', invalid='ignore', over='ignore'):
+        log_base = np.log(base)
+        log_result = x * log_base
+        
+        # Create result array
+        result = np.exp(log_result, out=out)
+        
+        # Handle special cases that need correction
+        # base = 1: result should be 1
+        result = np.where(base == 1, 1.0, result)
+        
+        # x = 0: result should be 1 (except when base = 0)
+        result = np.where((x == 0) & (base != 0), 1.0, result)
+        
+        # base = 0: handle separately
+        zero_base_mask = (base == 0)
+        result = np.where(zero_base_mask & (x > 0), 0.0, result)
+        result = np.where(zero_base_mask & (x == 0), 1.0, result)
+        result = np.where(zero_base_mask & (x < 0), np.inf, result)
+        
+        # Handle negative bases (set to NaN for non-integer exponents)
+        neg_base_mask = base < 0
+        non_int_exp_mask = ~np.isclose(x, np.round(x))
+        result = np.where(neg_base_mask & non_int_exp_mask, np.nan, result)
+        
+        # For negative bases with integer exponents, use np.power
+        int_exp_mask = neg_base_mask & ~non_int_exp_mask
+        if np.any(int_exp_mask):
+            result = np.where(int_exp_mask, np.power(base, x), result)
+    
+    return result
+
+'''
+# Example usage and testing
+if __name__ == "__main__":
+    # Test cases
+    print("Testing exp_base function:")
+    
+    # Basic tests
+    print(f"exp_base(2, 10) = {exp_base(2, 10)}")  # Should be 1024
+    print(f"exp_base(np.e, 2) = {exp_base(np.e, 2)}")  # Should be close to exp(2)
+    print(f"np.exp(2) = {np.exp(2)}")  # For comparison
+    
+    # Array tests
+    bases = np.array([2, 3, 10])
+    exponents = np.array([8, 4, 2])
+    print(f"exp_base({bases}, {exponents}) = {exp_base(bases, exponents)}")
+    
+    # Edge cases
+    print(f"exp_base(1, 100) = {exp_base(1, 100)}")  # Should be 1
+    print(f"exp_base(2, 0) = {exp_base(2, 0)}")      # Should be 1
+    print(f"exp_base(0, 2) = {exp_base(0, 2)}")      # Should be 0
+    print(f"exp_base(0, 0) = {exp_base(0, 0)}")      # Should be 1
+    
+    # Test vectorized version
+    print("\nTesting vectorized version:")
+    print(f"exp_base_vectorized(2, 10) = {exp_base_vectorized(2, 10)}")
+    
+    # Performance comparison for large arrays
+    import time
+    
+    large_base = np.random.uniform(1.1, 10, 10000)
+    large_exp = np.random.uniform(-5, 5, 10000)
+    
+    # Time the vectorized version
+    start = time.time()
+    result_vec = exp_base_vectorized(large_base, large_exp)
+    vec_time = time.time() - start
+    
+    # Time naive np.power for comparison
+    start = time.time()
+    result_naive = np.power(large_base, large_exp)
+    naive_time = time.time() - start
+    
+    print(f"\nVectorized version time: {vec_time:.4f}s")
+    print(f"Naive np.power time: {naive_time:.4f}s")
+    print(f"Max difference: {np.max(np.abs(result_vec - result_naive))}")
+
+'''
+
+def log_transform(arr,base='e',data_signed=False,data_size=2,data_type=np.uint16):
+    """
+    Transform array values >= 0 by adding 1 and applying natural log,
+    If unsigned convert negative values to zero
+    If signed, convert negative values, v, convert to -log(-v+1)
+    
+    Parameters:
+    arr : numpy.ndarray
+        2D numpy array of any numeric type
+        
+    Returns:
+    numpy.ndarray
+        Array of same shape with dtype data_type, containing ln(x+1) for x >= 0
+        Values < 0 are set to 0 if data_signed=False
+        Values v < 0 are set to -ln(-v+1)
+    """
+    # get logarithm base
+    log_base=np.exp(1.)
+    log_base_div=1.
+    if base != 'e':
+        log_base = float(base)
+        if log_base < 2.:
+            log_base = 2.
+        log_base_div = np.log(log_base)
+        
+
+    # Convert to data_type for output
+    result = np.full(arr.shape, 0, dtype=np.float32)
+    
+    # Create mask for values >= 0
+    mask = arr >= 0
+
+    # Create mask for values < 0
+    mask_neg = arr < 0
+    
+    # Apply transformation: ln(x + 1) for x >= 0
+    result[mask] = np.log(arr[mask] + 1).astype(np.float32)
+    if data_signed:
+        result[mask_neg] = -np.log(-arr[mask_neg]+1).astype(np.float32)
+    else:
+        result[mask_neg] = 0
+    
+    return (result/log_base_div).astype(data_type)
+
+def inverse_log_transform(arr,base='e',data_signed=False,data_size=2,data_type=np.uint16):
+    """
+    Inverse transform by applying exp and subtracting 1.
+    
+    Parameters:
+    arr : numpy.ndarray
+        Array containing log-transformed values
+        
+    Returns:
+    numpy.ndarray
+        Array of same shape containing exp(x) - 1
+    """
+
+    # Convert to data_type for output
+    result = np.full(arr.shape, 0, dtype=np.float32)
+  
+
+    # Create mask for values >= 0 
+    mask = arr >= 0
+
+    # Create mask for values < 0
+    mask_neg = arr < 0
+
+    result[mask] = exp_base(base, arr[mask]).astype(np.float32)-1
+    if data_signed:
+        result[mask_neg] = exp_base(base,-arr[mask_neg]).astype(np.float32)-1
+    else:
+        result[mask_neg] = 0
+ 
+    return result.astype(data_type)
+
+'''
+# Example usage:
+if __name__ == "__main__":
+    # Test with sample data
+    test_array = np.array([[0, 1, 2, 3],
+                          [4, 5, -1, 10]], dtype=np.float32)
+    
+    print("Original array:")
+    print(test_array)
+    print(f"Original dtype: {test_array.dtype}")
+    
+    # Apply log transform
+    transformed = log_transform(test_array)
+    print(f"\nLog transformed (dtype: {transformed.dtype}):")
+    print(transformed)
+    
+    # Apply inverse transform
+    restored = inverse_log_transform(transformed)
+    print(f"\nInverse transformed:")
+    print(restored)
+    
+    # Check if we get back original values (ignoring NaN entries)
+    mask = ~np.isnan(transformed)
+    original_valid = test_array[mask]
+    restored_valid = restored[mask]
+    print(f"\nMax difference for valid values: {np.max(np.abs(original_valid - restored_valid))}")
+'''
+
+def log_base(x, base=np.e):
+    """
+    Compute logarithm of x with arbitrary base.
+    
+    Parameters:
+    -----------
+    x : array_like
+        Input values. Must be positive.
+    base : float or array_like, optional
+        Base of the logarithm. Default is e (natural logarithm).
+        Must be positive and not equal to 1.
+    
+    Returns:
+    --------
+    ndarray
+        Logarithm of x with specified base.
+        
+    Notes:
+    ------
+    Uses the change of base formula: log_base(x) = ln(x) / ln(base)
+    
+    Examples:
+    ---------
+    >>> log_base(8, 2)  # log base 2 of 8
+    3.0
+    >>> log_base(100, 10)  # log base 10 of 100
+    2.0
+    >>> log_base([1, 2, 4, 8], 2)  # log base 2 of array
+    array([0., 1., 2., 3.])
+    """
+    x = np.asarray(x)
+    base = np.asarray(base)
+    
+    # Input validation
+    if np.any(x <= 0):
+        raise ValueError("Input values must be positive")
+    if np.any(base <= 0) or np.any(base == 1):
+        raise ValueError("Base must be positive and not equal to 1")
+    
+    # Use change of base formula: log_base(x) = ln(x) / ln(base)
+    return np.log(x) / np.log(base)
+
+
+def log2_extended(x):
+    """Logarithm base 2 (more explicit than numpy.log2)"""
+    return log_base(x, 2)
+
+
+def log10_extended(x):
+    """Logarithm base 10 (more explicit than numpy.log10)"""
+    return log_base(x, 10)
+
+'''
+
+# Example usage and demonstrations
+if __name__ == "__main__":
+    # Basic examples
+    print("Basic logarithm examples:")
+    print(f"log_2(8) = {log_base(8, 2)}")
+    print(f"log_10(100) = {log_base(100, 10)}")
+    print(f"log_3(27) = {log_base(27, 3)}")
+    print(f"log_e(e^2) = {log_base(np.e**2)}")  # Natural log (default)
+    
+    # Array inputs
+    print("\nArray examples:")
+    x_vals = np.array([1, 2, 4, 8, 16])
+    print(f"log_2({x_vals}) = {log_base(x_vals, 2)}")
+    
+    # Different bases for same input
+    print("\nSame input, different bases:")
+    x = 64
+    bases = [2, 4, 8]
+    for base in bases:
+        print(f"log_{base}({x}) = {log_base(x, base)}")
+    
+    # Comparison with numpy's built-in functions
+    print("\nComparison with numpy functions:")
+    test_val = 1000
+    print(f"log_base(1000, 10) = {log_base(test_val, 10)}")
+    print(f"numpy.log10(1000) = {np.log10(test_val)}")
+    print(f"Difference: {abs(log_base(test_val, 10) - np.log10(test_val))}")
+'''
+
+
 def sanitize_string(input_str):
     """
     Sanitizes a string for shell command usage by removing dangerous characters.
@@ -558,9 +938,7 @@ def scale_with_saturation(arr, scale_factor, satval=65534, only_uint16=True):
             unless only_uint16 is true
     """
     
-    my_dtype = np.int32
-    if args['uint'] == 2:
-        my_dtype = np.uint16
+    my_dtype = mydata_type
 
     # Check that scale factor is non-negative
     if scale_factor < 0:
@@ -1045,6 +1423,8 @@ def bin(old_image,bin_range,satval):
         print('l_bnl_compress.py: invalid image shape for 2D binning')
         return None
     my_dtype = np.int32
+    if mydata_float:
+        my_dtype = np.float32
     new_image = old_image.astype(my_dtype)
     new_image = np.maximum(new_image,0)
     if bin_range < 2:
@@ -1068,13 +1448,10 @@ def bin(old_image,bin_range,satval):
         new_image=new_image.clip(0,satval)
     new_image=np.round(ski.measure.block_reduce(new_image,(bin_range,bin_range),np.sum))
     new_image=new_image.clip(0,satval)
-    if args['uint'] == 2:
-        if args['verbose'] == True:
-            print('l_bnl_compress binned image of shape ', s, ' to u2 binned by ', bin_range)
-            return new_image.astype(np.uint16)
     if args['verbose'] == True:
-        print('l_bnl_compress binned image of shape ', s, ' to i4 binned by ', bin_range)            
-        return new_image.astype(np.uint16)
+        print('l_bnl_compress binned image of shape ', s, ' to ', mydata_type, ' binned by ', bin_range)
+    return new_iamge.astype(mydata_type)
+
 parser = argparse.ArgumentParser(description='Bin and sum images from a range')
 parser.add_argument('-1','--first_image', dest='first_image', type=int, nargs='?', const=1, default=1,
    help= 'first selected image counting from 1, defaults to 1')
@@ -1084,6 +1461,8 @@ parser.add_argument('-c','--compression', dest='compression', nargs='?', const='
    help= 'optional compression, bslz4, bszstd,  bshuf, or zstd, defaults to zstd')
 parser.add_argument('-d','--data_block_size', dest='data_block_size', type=int, nargs='?', const=100, default=100,
    help= 'data block size in images for out_file, defaults to 100')
+parser.add_argument('-f','--float',dest='ufloat', type=float, nargs="?", const=2,
+   help='clip the output above 0 and limit to 2 byte or 4 byte floats (positive values), or unclipped (negative values) ')
 parser.add_argument('-H','--Hcompress', dest='hcomp_scale', type=int,
    help= 'Hcompress scale compression, immediately followed by decompression')
 parser.add_argument('-i','--infile',dest='infile',
@@ -1094,6 +1473,8 @@ parser.add_argument('-K','--J2K2', dest='j2k_alt_target_compression_ratio', type
    help= 'JPEG-2000 alternate target compression ratio, immediately followed by decompression')
 parser.add_argument('-l','--compression_level', dest='compression_level', type=int,
    help= 'optional compression level for bszstd or zstd')
+parser.add_argument('-L','--logarithm', dest='logarithm_base', nargs='?', const='e',
+   help= 'convert non-negative values v to log(v+1), negative values to -log(-v+1)') 
 parser.add_argument('-m','--out_master',dest='out_master',
    help= 'the output hdf5 master to which to write metadata')
 parser.add_argument('-N','--last_image', dest='last_image', type=int,
@@ -1111,11 +1492,13 @@ parser.add_argument('-S', '--scale', dest='scale_factor', type=float,default=1.,
 parser.add_argument('-t','--thread',dest='thread', type=int,nargs='?',
    help= 'the thread number for the action of the current invocation of l_bnl_compress, 0 to just make a new master file, otherwise between 1 and the number of datablocks/threads')
 parser.add_argument('-u','--uint', dest='uint', type=int, nargs='?', const=2, default=2,
-   help= 'clip the output above 0 and limit to 2 byte or 4 byte integers')
+   help= 'clip the output above 0 and limit to 2 byte or 4 byte integer (positive values), or unclipped (negative values)')
 parser.add_argument('-v','--verbose',dest='verbose',action='store_true',
    help= 'provide addtional information')
 parser.add_argument('-V','--version',dest='report_version',action='store_true',
    help= 'report version and version_date')
+parser.add_argument('-X', '--exponential',dest='exponent', nargs='?', const= 'e',
+   help= 'convert non-negative values v to exp(v)-1 and negative values to -exp(-v)+1')
 args = vars(parser.parse_args())
 
 #Sanitize file names
@@ -2947,11 +3330,55 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
         fout_squash[nout_block]['entry'].attrs.create('NX_class',ntstr('NXentry'),dtype=ntstrdt('NXentry'))
         fout_squash[nout_block]['entry'].create_group('data')
         fout_squash[nout_block]['entry']['data'].attrs.create('NX_class',ntstr('NXdata'),dtype=ntstrdt('NXdata'))
-    mydata_type='u2'
-    if args['uint']==4:
-        mydata_type=np.int32
-    if args['uint']==0:
-        mydata_type=np.int32
+    mydata_type=np.uint16
+    mydata_float=False
+    mydata_int=True
+    mydata_signed=False
+    mydata_size=2
+    if args['ufloat'] !=  None:
+        mydata_float=True
+        mydata_int=False
+        if args['ufloat'] >= 0:
+            mydata_signed=False
+        else:
+            mydata_signed=True
+        if args['ufloat'] == 2 or args['ufloat'] == -2:
+            mydata_size = 2
+            mydata_type = np.float16
+        elif args['ufloat'] == 4 or args['ufloat'] == -4:
+            mydata_size = 4
+            mydata_type = np.float32
+        else:
+            print("args['ufloat'] =",args['ufloat']," not supported")
+            sys.exit(-1)
+    elif args['uint'] !=  None:
+        mydata_float=False  
+        mydata_int=True
+        if args['uint'] >= 0:
+            mydata_signed=False
+        else:
+            mydata_signed=True
+        if args['uint'] == 2:
+            mydata_size = 2
+            mydata_type = np.uint16
+        elif args['uint'] == -2:
+            mydata_size = 2
+            mydata_type = np.int16 
+        elif args['ufloat'] == 4:
+            mydata_size = 4
+            mydata_type = np.uint32
+        elif args['ufloat'] == -4:
+            mydata_size = 4
+            mydata_type = np.int32
+        else:
+            print("args['uint'] =",args['uint']," not supported")
+            sys.exit(-1)
+    else:
+        mydata_float=False  
+        mydata_int=True 
+        mydata_signed = False
+        mydata_size = 2
+        mydata_type = np.uint16
     if args['compression']==None:
         fout[nout_block]['entry']['data'].create_dataset('data',
             shape=((lim_nout_image-nout_image),nout_data_shape[0],nout_data_shape[1]),
@@ -3018,9 +3445,8 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
     nhcomp_img = 0
     j2k_tot_compimgsize=0
     nj2k_img=0
-    my_dtype = 'np.int32'
-    if args['uint']==2:
-        my_dtype = 'np.uint16'
+    my_dtype = mydata_type
+
     for out_image in range(nout_image,lim_nout_image):
         new_images[out_image]= \
             new_images_buffer_manager.get_dataset(str(out_image))
@@ -3033,6 +3459,28 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
             print('nout_data_shape: ',nout_data_shape)
         if args['verbose'] == True:
             print('l_bnl_compress.py satval: ',satval,' new_satval: ',new_satval,' scale_factor: ',float(args['scale_factor']))
+        if args['logarithm_base'] != None:
+            log_base=args['logarithm_base']
+            if log_base == 'e':
+                log_base = np.exp(1.)
+            else:
+                log_base=float(log_base)
+            if (log_base < 2.):
+                print('l_bnl_compress needs loarithm base >= 2., abort')
+                sys.exit(-1)
+            newresult=log_transform(newresult,base=log_base,data_signed=mydata_signed,\
+                 data_size=mydata_size,data_type=mydata_type)
+        if args['exponent'] != None:
+             exponent=args['exponent']
+             if exponent == 'e':
+                 exponent = np.exp(1.)
+             else:
+                 exponent = float(exponent)
+             if (exponent < 2.):
+                print('l_bnl_compress needs exponent >= 2., abort')
+                sys.exit(-1)
+             newresult=inverse_log_transform(newresult,base=exponent,data_signed=mydata_signed,\
+                 data_size=mydata_size,data_type=mydata_type)
         if args['hcomp_scale']==None \
             and args['j2k_target_compression_ratio']==None \
             and args['j2k_alt_target_compression_ratio']==None:
