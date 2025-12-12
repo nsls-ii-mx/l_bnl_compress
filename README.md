@@ -130,6 +130,9 @@ The modules upon which this program depends are:
       queue
       string
 
+Most commonly, each user will have to install all modules for themselves
+using pip or pipx.
+
 This version supports coarse-grained process-level parallelism in writing
 the -H, -J, or -K compressions.  In the near future
 we intend to upgrade to parallelism using concurrent.futures, which
