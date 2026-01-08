@@ -1,5 +1,5 @@
 '''l_bnl_compress.py, lossy, but not lossy, compresss,
-       a script to apply lossy compression to HDF5 MX image files.
+       a script to apply lossy compression to HDF5 MX image
 
   (C) Copyright 16 March 2025 Herbert J. Bernstein
   Portions suggested by claude.ai from Anthropic
@@ -9,8 +9,9 @@
 usage: l_bnl_compress.py [-h] [-1 FIRST_IMAGE] [-b BIN_RANGE] [-c COMPRESSION] [-d DATA_BLOCK_SIZE] \
                          [-f SIZE] [-H HCOMP_SCALE] [-i INFILE] [-J J2K_TARGET_COMPRESSION_RATIO] \
                          [-l COMPRESSION_LEVEL] [-m OUT_MASTER] [-N LAST_IMAGE] [-o OUT_FILE] \
-                         [-q OUT_SQUASH] [-s SUM_RANGE] [-S SCALE] [-v]
-
+                         [-q OUT_SQUASH] [-s SUM_RANGE] [-S SCALE] [-v] \
+                         [[-R|--Regiontoomit] Rfastlow,Rfasthigh[,Rmidlow,Rmidhigh]] 
+ 
 Bin and sum images from a range
 
 options:
@@ -45,7 +46,7 @@ options:
                         last selected image counting from 1
   -o OUT_FILE, --out_file OUT_FILE
                         the output hdf5 data file out_file_?????? with an .h5 extension are files to which to write images
-  -p THREADS, -- parallel THREADS
+  -p THREADS, --parallel THREADS
                         the number of parallel threads with to spawn to generate -H, -J, or -K data files in parallel 
   -q OUT_SQUASH, --out_squash OUT_SQUASH
                         an optional hdf5 data file out_squash_?????? with an .h5 extension are optional files to which
@@ -67,6 +68,10 @@ options:
   -X EXPONENT, --exponential EXPONENT
                         convert non-negative calues v to exp(v)-1 and negative values to -exp(-v)+1
                         as short unsigned int, if --float is not specified  or whatever is specified by --unit or by --float
+
+  -R Rfastlow,Rfasthigh[,Rmidlow,Rmidhigh] 
+  --Regiontoomit Rfastlow,Rfasthigh[,Rmidlow,Rmidhigh]  repeat as needed
+                        
 
 '''
 
@@ -1452,6 +1457,8 @@ def bin(old_image,bin_range,satval):
         print('l_bnl_compress binned image of shape ', s, ' to ', mydata_type, ' binned by ', bin_range)
     return new_iamge.astype(mydata_type)
 
+
+
 parser = argparse.ArgumentParser(description='Bin and sum images from a range')
 parser.add_argument('-1','--first_image', dest='first_image', type=int, nargs='?', const=1, default=1,
    help= 'first selected image counting from 1, defaults to 1')
@@ -1481,7 +1488,7 @@ parser.add_argument('-N','--last_image', dest='last_image', type=int,
    help= 'last selected image counting from 1, defaults to number of images collected')
 parser.add_argument('-o','--out_file',dest='out_file',default='out_data',
    help= 'the output hdf5 data file out_file_?????? with an .h5 extension are files to which to write images')
-parser.add_argument('-p','-- parallel',dest='threads', default=0,
+parser.add_argument('-p','--parallel',dest='threads', default=0,
    help= 'the number of parallel threads with extra thread 0 used by itself to generate the new master file first') 
 parser.add_argument('-q','--out_squash',dest='out_squash',
    help= 'the output hdf5 data file out_squash_?????? with an .h5 extension are optional files to which to write raw j2k or hcomp images')
@@ -1499,18 +1506,100 @@ parser.add_argument('-V','--version',dest='report_version',action='store_true',
    help= 'report version and version_date')
 parser.add_argument('-X', '--exponential',dest='exponent', nargs='?', const= 'e',
    help= 'convert non-negative values v to exp(v)-1 and negative values to -exp(-v)+1')
+parser.add_argument('-R', '--Regiontoomit', type=str,
+   action='append',  # This allows multiple uses
+   dest='slices_to_zero',
+   help='Region to omit. Formats: '
+        '(1) Range: Rfastlow,Rfasthigh[,Rmidlow,Rmidhigh] | '
+        '(2) Slice: columns_START::STEP or rows_START::STEP | '
+        '(3) Pattern: zero_N_of_M_columns/rows | '
+        'Examples: columns_::2, rows_1::2, zero_2_of_3_columns '
+        'zero_3_of_4_rows, columns_0,2::5')
+
+
 args = vars(parser.parse_args())
+
+# Now args.slices_to_zero will be a list of all -F values
+if args['slices_to_zero']:
+    print(f"Slices to zero out: args['slices_to_zero']")
+    
+    # Example usage with a numpy array
+    data = np.random.rand(10, 5, 5)  # 3D array
+    
+    for slice_idx in args.slices_to_zero:
+        if 0 <= slice_idx < data.shape[0]:
+            data[slice_idx] = 0
+            print(f"Zeroed out slice {slice_idx}")
+        else:
+            print(f"Warning: slice {slice_idx} out of range")
+
+
+
+# NOW you can use args - add this code here:
+if args.get('slices_to_zero'):
+    print(f"Slices to zero out: {args['slices_to_zero']}")
+    
+    # Example usage with a numpy array
+    data = np.random.rand(10, 5, 5)  # 3D array
+    
+    for slice_idx in args['slices_to_zero']:
+        if 0 <= slice_idx < data.shape[0]:
+            data[slice_idx] = 0
+            print(f"Zeroed out slice {slice_idx}")
+        else:
+            print(f"Warning: slice {slice_idx} out of range")
+
+
 
 #Sanitize file names
 
 oout_file = args['out_file']
 oout_master = args['out_master']
 oout_squash = args['out_squash']
-
 if oout_file != None:
     args['out_file'] = sanitize_string(oout_file)
     if oout_file != args['out_file'] and args['verbose'] == True:
         print("l_bnl_compress.py: sanitized out_file to ",args['out_file'])
+
+# With slice notation support
+parser.add_argument('-R', '--Regiontoomit',
+                   type=str,
+                   action='append',
+                   dest='slices_to_zero',
+                   help='Region to omit. Examples: '
+                        'Rfastlow,Rfasthigh[,Rmidlow,Rmidhigh] | '
+                        'columns_::2 (every other column starting at 0) | '
+                        'columns_1::2 (every other column starting at 1) | '
+                        'rows_::2 (every other row starting at 0) | '
+                        'rows_1::2 (every other row starting at 1) | '
+                        'columns_::3 (every 3rd column) | '
+                        'columns_0,1::3 (columns 0,1,3,4,6,7,...)')
+
+# With N-out-of-M patterns
+parser.add_argument('-R', '--Regiontoomit',
+                   type=str,
+                   action='append',
+                   dest='slices_to_zero',
+                   help='Region to omit. Examples: '
+                        'Rfastlow,Rfasthigh[,Rmidlow,Rmidhigh] | '
+                        'zero_columns_1of2 (every other column, starting at 0) | '
+                        'zero_columns_2of3 (2 out of every 3 columns) | '
+                        'zero_rows_3of4 (3 out of every 4 rows) | '
+                        'columns_slice_0:10:2 (slice notation: start:stop:step)')
+
+
+# Most flexible version combining all patterns
+parser.add_argument('-R', '--Regiontoomit',
+                   type=str,
+                   action='append',
+                   dest='slices_to_zero',
+                   help='Region to omit. Formats: '
+                        '(1) Range: Rfastlow,Rfasthigh[,Rmidlow,Rmidhigh] | '
+                        '(2) Slice: columns_START::STEP or rows_START::STEP | '
+                        '(3) Pattern: zero_N_of_M_columns/rows | '
+                        'Examples: '
+                        'columns_::2, rows_1::2, zero_2_of_3_columns, '
+                        'zero_3_of_4_rows, columns_0,2::5')
 
 if oout_master != None:
     args['out_master'] = sanitize_string(oout_master)
