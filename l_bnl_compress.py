@@ -71,7 +71,14 @@ options:
 
   -R Rfastlow,Rfasthigh[,Rmidlow,Rmidhigh] 
   --Regiontoomit Rfastlow,Rfasthigh[,Rmidlow,Rmidhigh]  repeat as needed
-                        
+  --RegionbyColumns :,  ::2 
+                       Sets every other element in each row to zero
+                       change ::2 to 1::2 to start at column 1
+  --RegionbyRows ::2, :]
+                       Sets every other element in each column to zero
+                       change ::2 to 1::2 to start at row 1
+
+ 
 
 '''
 
@@ -1455,7 +1462,7 @@ def bin(old_image,bin_range,satval):
     new_image=new_image.clip(0,satval)
     if args['verbose'] == True:
         print('l_bnl_compress binned image of shape ', s, ' to ', mydata_type, ' binned by ', bin_range)
-    return new_iamge.astype(mydata_type)
+    return new_image.astype(mydata_type)
 
 
 
