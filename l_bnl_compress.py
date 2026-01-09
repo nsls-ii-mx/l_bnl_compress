@@ -68,17 +68,11 @@ options:
   -X EXPONENT, --exponential EXPONENT
                         convert non-negative calues v to exp(v)-1 and negative values to -exp(-v)+1
                         as short unsigned int, if --float is not specified  or whatever is specified by --unit or by --float
-
-  -R Rfastlow,Rfasthigh[,Rmidlow,Rmidhigh] 
-  --Regiontoomit Rfastlow,Rfasthigh[,Rmidlow,Rmidhigh]  repeat as needed
-  --RegionbyColumns :,  ::2 
-                       Sets every other element in each row to zero
+  -R, --ROmit :, ::2  Sets every other element in each row to zero
                        change ::2 to 1::2 to start at column 1
-  --RegionbyRows ::2, :]
-                       Sets every other element in each column to zero
+  -C, --COmit ::2, : Sets every other element in each column to zero
                        change ::2 to 1::2 to start at row 1
-
- 
+  -0, OMIT specifies the image number to be subjected to omit logic, multiple ones may be specified  
 
 '''
 
@@ -1513,51 +1507,59 @@ parser.add_argument('-V','--version',dest='report_version',action='store_true',
    help= 'report version and version_date')
 parser.add_argument('-X', '--exponential',dest='exponent', nargs='?', const= 'e',
    help= 'convert non-negative values v to exp(v)-1 and negative values to -exp(-v)+1')
-parser.add_argument('-R', '--Regiontoomit', type=str,
+parser.add_argument('-R', '--RO', type=str,
    action='append',  # This allows multiple uses
    dest='slices_to_zero',
    help='Region to omit. Formats: '
-        '(1) Range: Rfastlow,Rfasthigh[,Rmidlow,Rmidhigh] | '
-        '(2) Slice: columns_START::STEP or rows_START::STEP | '
-        '(3) Pattern: zero_N_of_M_columns/rows | '
+        ' Pattern: zero_N_of_M_columns/rows | '
         'Examples: columns_::2, rows_1::2, zero_2_of_3_columns '
         'zero_3_of_4_rows, columns_0,2::5')
+parser.add_argument('-C', '--CO', type=str,
+   action='append',  # This allows multiple uses
+   dest='slices_to_zero',
+   help='Region to omit. Formats: '
+        ' Pattern: zero_N_of_M_columns/rows | '
+        'Examples: columns_::2, rows_1::2, zero_2_of_3_columns '
+        'zero_3_of_4_rows, columns_0,2::5')
+parser.add_argument('-0', '--omit', type=int,
+   action='append', # This allows multiple uses
+   dest='frames_for_omits',
+   help='Frames from which to omit')
 
 
 args = vars(parser.parse_args())
 
-# Now args.slices_to_zero will be a list of all -F values
-if args['slices_to_zero']:
-    print(f"Slices to zero out: args['slices_to_zero']")
-    
-    # Example usage with a numpy array
-    data = np.random.rand(10, 5, 5)  # 3D array
-    
-    for slice_idx in args.slices_to_zero:
-        if 0 <= slice_idx < data.shape[0]:
-            data[slice_idx] = 0
-            print(f"Zeroed out slice {slice_idx}")
-        else:
-            print(f"Warning: slice {slice_idx} out of range")
-
-
-
-# NOW you can use args - add this code here:
+# Process region omission specifications
 if args.get('slices_to_zero'):
-    print(f"Slices to zero out: {args['slices_to_zero']}")
+    print(f"Regions to zero out: {args['slices_to_zero']}")
     
-    # Example usage with a numpy array
-    data = np.random.rand(10, 5, 5)  # 3D array
-    
-    for slice_idx in args['slices_to_zero']:
-        if 0 <= slice_idx < data.shape[0]:
-            data[slice_idx] = 0
-            print(f"Zeroed out slice {slice_idx}")
-        else:
-            print(f"Warning: slice {slice_idx} out of range")
-
-
-
+    # Parse each region specification
+    for region_spec in args['slices_to_zero']:
+        region_spec = region_spec.strip()
+        
+        # Parse different formats:
+        # Format 2: "columns_::2" or "rows_1::2"
+        
+        if region_spec.startswith('columns_') or region_spec.startswith('rows_'):
+            # Parse slice notation (e.g., "::2" or "1::2" or "0,2::5")
+            try:
+                # Handle comma-separated values followed by slice
+                if ',' in slice_part and '::' in slice_part:
+                    parts = slice_part.split(',')
+                    # This would need more complex parsing
+                    print(f"Warning: Complex slice pattern '{region_spec}' not yet fully implemented")
+                elif '::' in slice_part:
+                    # Simple slice pattern
+                    slice_parts = slice_part.split('::')
+                    start = int(slice_parts[0]) if slice_parts[0] else 0
+                    step = int(slice_parts[1]) if len(slice_parts) > 1 else 1
+                    print(f"Parsed {direction} slice: start={start}, step={step}")
+                    # Store for later use when processing images
+                else:
+                    print(f"Warning: Unrecognized slice format '{region_spec}'")
+            except ValueError as e:
+                print(f"Error parsing slice '{region_spec}': {e}")
+                
 #Sanitize file names
 
 oout_file = args['out_file']
@@ -1567,47 +1569,7 @@ if oout_file != None:
     args['out_file'] = sanitize_string(oout_file)
     if oout_file != args['out_file'] and args['verbose'] == True:
         print("l_bnl_compress.py: sanitized out_file to ",args['out_file'])
-
-# With slice notation support
-parser.add_argument('-R', '--Regiontoomit',
-                   type=str,
-                   action='append',
-                   dest='slices_to_zero',
-                   help='Region to omit. Examples: '
-                        'Rfastlow,Rfasthigh[,Rmidlow,Rmidhigh] | '
-                        'columns_::2 (every other column starting at 0) | '
-                        'columns_1::2 (every other column starting at 1) | '
-                        'rows_::2 (every other row starting at 0) | '
-                        'rows_1::2 (every other row starting at 1) | '
-                        'columns_::3 (every 3rd column) | '
-                        'columns_0,1::3 (columns 0,1,3,4,6,7,...)')
-
-# With N-out-of-M patterns
-parser.add_argument('-R', '--Regiontoomit',
-                   type=str,
-                   action='append',
-                   dest='slices_to_zero',
-                   help='Region to omit. Examples: '
-                        'Rfastlow,Rfasthigh[,Rmidlow,Rmidhigh] | '
-                        'zero_columns_1of2 (every other column, starting at 0) | '
-                        'zero_columns_2of3 (2 out of every 3 columns) | '
-                        'zero_rows_3of4 (3 out of every 4 rows) | '
-                        'columns_slice_0:10:2 (slice notation: start:stop:step)')
-
-
-# Most flexible version combining all patterns
-parser.add_argument('-R', '--Regiontoomit',
-                   type=str,
-                   action='append',
-                   dest='slices_to_zero',
-                   help='Region to omit. Formats: '
-                        '(1) Range: Rfastlow,Rfasthigh[,Rmidlow,Rmidhigh] | '
-                        '(2) Slice: columns_START::STEP or rows_START::STEP | '
-                        '(3) Pattern: zero_N_of_M_columns/rows | '
-                        'Examples: '
-                        'columns_::2, rows_1::2, zero_2_of_3_columns, '
-                        'zero_3_of_4_rows, columns_0,2::5')
-
+    
 if oout_master != None:
     args['out_master'] = sanitize_string(oout_master)
     if oout_master != args['out_master'] and args['verbose'] == True:
@@ -1615,7 +1577,7 @@ if oout_master != None:
 
 if oout_squash != None:
     args['out_squash'] = sanitize_string(out_squash)
-    if oout_squash != args['out_squasg'] and args['verbose'] == True:
+    if oout_squash != args['out_squash'] and args['verbose'] == True:
         print("l_bnl_compress.py: sanitized out_squash to ",args['out_squash'])
 
 
@@ -2011,8 +1973,6 @@ try:
 except:
     print('l_bnl_compress.py: detector/goniometer not found')
     det_gon = None
-
-
 
 det_nxt = None
 det_nxt_transation = None
@@ -2595,7 +2555,7 @@ if args['out_squash']=='out_file':
   Cases for master files and data files
     threads == 0 or theads == None
        There is no parallelism and a single thread will
-       write both the master file ad all data files
+       write both the master file and all data files
     threads > 0
        Thread 0 will write the master file.
        All other threads (1...) will read the master file and
@@ -3577,6 +3537,55 @@ for nout_block in range(out_block_start,out_number_of_blocks+1,out_block_step):
                 sys.exit(-1)
              newresult=inverse_log_transform(newresult,base=exponent,data_signed=mydata_signed,\
                  data_size=mydata_size,data_type=mydata_type)
+# Apply region omissions if specified
+if args.get('slices_to_zero'):
+    for region_spec in args['slices_to_zero']:
+        region_spec = region_spec.strip()
+        
+        if region_spec.startswith('columns_'):
+            slice_part = region_spec.split('_', 1)[1]
+            if '::' in slice_part:
+                slice_parts = slice_part.split('::')
+                start = int(slice_parts[0]) if slice_parts[0] else 0
+                step = int(slice_parts[1]) if len(slice_parts) > 1 else 1
+                # Zero out columns
+                newresult[:, start::step] = 0
+                
+        elif region_spec.startswith('rows_'):
+            slice_part = region_spec.split('_', 1)[1]
+            if '::' in slice_part:
+                slice_parts = slice_part.split('::')
+                start = int(slice_parts[0]) if slice_parts[0] else 0
+                step = int(slice_parts[1]) if len(slice_parts) > 1 else 1
+                # Zero out rows
+                newresult[start::step, :] = 0
+                
+        elif region_spec.startswith('zero_'):
+            # Handle N-out-of-M patterns
+            parts = region_spec.split('_')
+            if len(parts) >= 5 and parts[2] == 'of':
+                n = int(parts[1])
+                m = int(parts[3])
+                direction = parts[4]
+                if direction == 'columns':
+                    # Zero out n columns out of every m
+                    for i in range(newresult.shape[1]):
+                        if i % m < n:
+                            newresult[:, i] = 0
+                elif direction == 'rows':
+                    for i in range(newresult.shape[0]):
+                        if i % m < n:
+                            newresult[i, :] = 0
+        else:
+            # Range specification
+            coords = [int(x.strip()) for x in region_spec.split(',')]
+            if len(coords) == 2:
+                fast_low, fast_high = coords
+                newresult[:, fast_low:fast_high+1] = 0
+            elif len(coords) == 4:
+                fast_low, fast_high, mid_low, mid_high = coords
+                newresult[mid_low:mid_high+1, fast_low:fast_high+1] = 0
+
         if args['hcomp_scale']==None \
             and args['j2k_target_compression_ratio']==None \
             and args['j2k_alt_target_compression_ratio']==None:
